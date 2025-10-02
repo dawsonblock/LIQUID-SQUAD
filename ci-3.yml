@@ -78,7 +78,7 @@ jobs:
       - name: Frontend unit tests
         working-directory: frontend
         run: |
-          npm test --if-present -- --ci --reporters=default --reporters=jest-junit || true
+          npm test --if-present -- --ci --reporters=default --reporters=jest-junit
 
       - name: Frontend build
         working-directory: frontend
