@@ -4,7 +4,7 @@ kind: Kustomization
 
 namespace: liquid-hive
 
-bases:
+resources:
   - ../../base
 
 namePrefix: prod-
