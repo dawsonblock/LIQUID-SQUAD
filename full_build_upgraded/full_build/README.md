@@ -34,15 +34,15 @@ RATE_LIMIT_WINDOW=60
 CORS_ORIGINS=*
 
 # Model configuration
-PRIMARY_MODEL_URL=http://localhost:8000/v1/chat/completions
-BACKUP_MODEL_URL=http://localhost:8001/v1/chat/completions
+PRIMARY_MODEL_URL=http:
+BACKUP_MODEL_URL=http:
 MODEL_API_KEY=your-api-key
 MODEL_NAME=gpt-3.5-turbo
 
 # Retrieval configuration
 RETRIEVAL_MODE=disabled  # Options: disabled, dense, sparse, dual
-QDRANT_URL=http://qdrant:6333
-ES_URL=http://elasticsearch:9200
+QDRANT_URL=http:
+ES_URL=http:
 EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 
 # Self-loop configuration
@@ -55,55 +55,60 @@ CODE_EXEC=off
 
 ### Running Locally
 
-1. Install dependencies:
-   ```bash
-   cd full_build_upgraded/full_build
-   pip install -r requirements.txt
-   ```
+1.  Install dependencies:
 
-2. Set environment variables (or create `.env` file)
+    ```bash
+    cd full_build_upgraded/full_build
+    pip install -r requirements.txt
+    ```
 
-3. Run the API server:
-   ```bash
-   # Option 1: Using uvicorn directly
-   uvicorn full_build.service.api:app --host 0.0.0.0 --port 8000
-   
-   # Option 2: Using bootstrap script
-   python -m full_build.service.bootstrap
-   ```
+2.  Set environment variables (or create `.env` file)
 
-4. Test the API:
-   ```bash
-   # Health check
-   curl http://localhost:8000/health
-   
-   # Ask a question (no auth)
-   curl -X POST http://localhost:8000/ask \
+3.  Run the API server:
+
+    ```bash
+    # Option 1: Using uvicorn directly
+    uvicorn full_build.service.api:app --host 0.0.0.0 --port 8000
+    
+    # Option 2: Using bootstrap script
+    python -m full_build.service.bootstrap
+    ```
+
+4.  Test the API:
+
+    ```bash
+    # Health check
+    curl http:
+    
+    # Ask a question (no auth)
+    curl -X POST http:
      -H "Content-Type: application/json" \
      -d '{"question": "What is 2+2?"}'
-   
-   # Ask a question (with auth)
-   curl -X POST http://localhost:8000/ask \
+    
+    # Ask a question (with auth)
+    curl -X POST http:
      -H "Content-Type: application/json" \
      -H "Authorization: Bearer your-secret-token-here" \
      -d '{"question": "What is 2+2?"}'
-   ```
+    ```
 
 ### Running with Docker
 
-1. Build the image:
-   ```bash
-   cd full_build_upgraded/full_build
-   docker build -t liquid-squad:latest .
-   ```
+1.  Build the image:
 
-2. Run the container:
-   ```bash
-   docker run -p 8000:8000 \
-     -e PRIMARY_MODEL_URL=http://your-model-url \
+    ```bash
+    cd full_build_upgraded/full_build
+    docker build -t liquid-squad:latest .
+    ```
+
+2.  Run the container:
+
+    ```bash
+    docker run -p 8000:8000 \
+     -e PRIMARY_MODEL_URL=http:
      -e RETRIEVAL_MODE=disabled \
      liquid-squad:latest
-   ```
+    ```
 
 ### Running with Docker Compose
 
@@ -118,17 +123,18 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - PRIMARY_MODEL_URL=http://model:8000/v1/chat/completions
+      - PRIMARY_MODEL_URL=http:
       - RETRIEVAL_MODE=disabled
       - AUTH_TOKEN=your-secret-token
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8000/health"]
+      test: ["CMD", "wget", "-qO-", "http:
       interval: 30s
       timeout: 3s
       retries: 3
 ```
 
 Run with:
+
 ```bash
 docker-compose up
 ```
@@ -138,28 +144,35 @@ docker-compose up
 ### Endpoints
 
 #### `GET /health`
+
 Liveness probe. Always returns 200 if the service is running.
 
 **Response:**
+
 ```json
 {"ok": true}
 ```
 
 #### `GET /ready`
+
 Readiness probe. Checks downstream services (Qdrant/ES) if retrieval is enabled.
 
 **Response:**
+
 ```json
 {"ready": true}
 ```
 
 #### `GET /metrics`
+
 Prometheus metrics endpoint. Returns metrics in Prometheus text format.
 
 #### `POST /ask`
+
 Main question-answering endpoint.
 
 **Request:**
+
 ```json
 {
   "question": "What is the capital of France?"
@@ -167,10 +180,12 @@ Main question-answering endpoint.
 ```
 
 **Headers:**
+
 - `Authorization: Bearer <token>` (required if `AUTH_TOKEN` is set)
 - `Content-Type: application/json`
 
 **Response:**
+
 ```json
 {
   "answer": "The capital of France is Paris.",
@@ -179,6 +194,7 @@ Main question-answering endpoint.
 ```
 
 **Error Responses:**
+
 - `401 Unauthorized` - Invalid or missing auth token
 - `429 Too Many Requests` - Rate limit exceeded
 - `500 Internal Server Error` - Processing error
@@ -193,6 +209,7 @@ pytest tests/ -v
 ```
 
 Run specific test files:
+
 ```bash
 pytest tests/test_health.py -v
 pytest tests/test_auth.py -v
@@ -202,19 +219,21 @@ pytest tests/test_ask_disabled_retrieval.py -v
 ## Configuration Modes
 
 ### Retrieval Disabled (Simplest)
+
 ```bash
 RETRIEVAL_MODE=disabled
-PRIMARY_MODEL_URL=http://your-model-url
+PRIMARY_MODEL_URL=http:
 ```
 
 This mode runs the self-loop without retrieval. Suitable for general Q&A without external knowledge.
 
 ### Retrieval Enabled
+
 ```bash
 RETRIEVAL_MODE=dual  # or dense, sparse
-QDRANT_URL=http://qdrant:6333
-ES_URL=http://elasticsearch:9200
-PRIMARY_MODEL_URL=http://your-model-url
+QDRANT_URL=http:
+ES_URL=http:
+PRIMARY_MODEL_URL=http:
 ```
 
 This mode enables RAG with Qdrant (dense) and Elasticsearch (sparse) backends.
@@ -241,13 +260,13 @@ full_build/
 
 ## Production Considerations
 
-1. **Authentication**: Always set `AUTH_TOKEN` in production
-2. **Rate Limiting**: Adjust `RATE_LIMIT_QPS` based on your capacity
-3. **Model Endpoints**: Use production-grade model endpoints with proper timeouts
-4. **Retrieval**: Start with `RETRIEVAL_MODE=disabled` and enable when needed
-5. **Monitoring**: Use `/metrics` endpoint with Prometheus/Grafana
-6. **Health Checks**: Configure k8s/Docker health checks using `/health` and `/ready`
-7. **Code Execution**: Keep `CODE_EXEC=off` unless you have proper sandboxing
+1.  **Authentication**: Always set `AUTH_TOKEN` in production
+2.  **Rate Limiting**: Adjust `RATE_LIMIT_QPS` based on your capacity
+3.  **Model Endpoints**: Use production-grade model endpoints with proper timeouts
+4.  **Retrieval**: Start with `RETRIEVAL_MODE=disabled` and enable when needed
+5.  **Monitoring**: Use `/metrics` endpoint with Prometheus/Grafana
+6.  **Health Checks**: Configure k8s/Docker health checks using `/health` and `/ready`
+7.  **Code Execution**: Keep `CODE_EXEC=off` unless you have proper sandboxing
 
 ## License
 
