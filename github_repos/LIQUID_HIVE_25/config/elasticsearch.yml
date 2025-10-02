@@ -1,0 +1,47 @@
+
+# Cluster settings
+cluster.name: liquid-hive-cluster
+node.name: liquid-hive-node
+
+# Network settings
+network.host: 0.0.0.0
+http.port: 9200
+transport.port: 9300
+
+# Discovery settings
+discovery.type: single-node
+
+# Memory settings
+bootstrap.memory_lock: true
+
+# Security settings
+xpack.security.enabled: false
+xpack.security.enrollment.enabled: false
+xpack.security.http.ssl.enabled: false
+xpack.security.transport.ssl.enabled: false
+
+# Monitoring settings
+xpack.monitoring.collection.enabled: true
+
+# Index settings
+action.auto_create_index: true
+action.destructive_requires_name: true
+
+# Performance settings
+thread_pool:
+  search:
+    size: 4
+    queue_size: 1000
+  index:
+    size: 2
+    queue_size: 200
+
+# Logging
+logger.level: INFO
+logger.org.elasticsearch.discovery: WARN
+
+# Index lifecycle management
+xpack.ilm.enabled: true
+
+# Snapshot settings
+path.repo: ["/usr/share/elasticsearch/backup"]

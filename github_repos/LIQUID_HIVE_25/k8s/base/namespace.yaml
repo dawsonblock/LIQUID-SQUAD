@@ -1,0 +1,8 @@
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: liquid-hive
+  labels:
+    name: liquid-hive
+    environment: production
