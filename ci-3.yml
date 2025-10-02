@@ -68,7 +68,7 @@ jobs:
           QDRANT_URL: http://localhost:6333
           ELASTICSEARCH_URL: http://localhost:9200
         run: |
-          pytest -q || true
+          pytest -q
 
       - name: Frontend install
         working-directory: frontend
