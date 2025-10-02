@@ -1,0 +1,8 @@
+# Configuration for the dual‑index retrieval engine.
+dense_model: null             # Path or identifier for your dense embedding model.
+sparse:
+  k1: 1.2                   # BM25 k1 hyperparameter (term frequency saturation).
+  b: 0.75                  # BM25 b hyperparameter (document length normalisation).
+corpus_dir: data/corpus      # Directory containing text documents to index.
+store_sections: true         # Whether to store section IDs for citations.
+top_k: 5                     # Default number of documents to return for a query.

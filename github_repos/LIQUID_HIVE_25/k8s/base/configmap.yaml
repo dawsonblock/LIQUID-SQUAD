@@ -1,0 +1,41 @@
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: liquid-hive-config
+  namespace: liquid-hive
+data:
+  # API Configuration
+  PORT: "8000"
+  LOG_LEVEL: "INFO"
+  
+  # Database Configuration
+  POSTGRES_DB: "liquid_hive"
+  POSTGRES_PORT: "5432"
+  
+  # Redis Configuration
+  REDIS_HOST: "redis-service"
+  REDIS_PORT: "6379"
+  REDIS_DB: "0"
+  
+  # Qdrant Configuration
+  QDRANT_HOST: "qdrant-service"
+  QDRANT_PORT: "6333"
+  QDRANT_GRPC_PORT: "6334"
+  
+  # Elasticsearch Configuration
+  ELASTICSEARCH_HOST: "elasticsearch-service"
+  ELASTICSEARCH_PORT: "9200"
+  
+  # Rate Limiting
+  RATE_LIMIT_REQUESTS: "100"
+  RATE_LIMIT_WINDOW: "60"
+  ASK_ENDPOINT_LIMIT: "10"
+  ASK_ENDPOINT_WINDOW: "60"
+  
+  # CORS Configuration
+  CORS_ALLOW_ORIGINS: "http://localhost:3000,https://liquid-hive.example.com"
+  
+  # JWT Configuration
+  JWT_ALGORITHM: "HS256"
+  JWT_EXPIRATION_HOURS: "24"

@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  qdrant:
+    image: qdrant/qdrant:latest
+    ports:
+      - "6333:6333"
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.9.0
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+  vllm_small:
+    image: ghcr.io/vllm/vllm-openai:latest
+    environment:
+      - MODEL_ID=LiquidAI/LFM2-350M-Extract
+      - HF_TOKEN=${HF_TOKEN}
+    ports:
+      - "8001:8000"
+  vllm_medium:
+    image: ghcr.io/vllm/vllm-openai:latest
+    environment:
+      - MODEL_ID=LiquidAI/LFM2-1.2B-Tool
+      - HF_TOKEN=${HF_TOKEN}
+    ports:
+      - "8002:8000"
+  vllm_large:
+    image: ghcr.io/vllm/vllm-openai:latest
+    environment:
+      - MODEL_ID=LiquidAI/LFM2-2.6B
+      - HF_TOKEN=${HF_TOKEN}
+    ports:
+      - "8003:8000"
+  api:
+    build:
+      context: ../full_build
+    environment:
+      - SMALL_MODEL_URL=http://vllm_small:8000
+      - MEDIUM_MODEL_URL=http://vllm_medium:8000
+      - LARGE_MODEL_URL=http://vllm_large:8000
+      - QDRANT_URL=http://qdrant:6333
+      - ES_URL=http://elasticsearch:9200
+      - AUTH_TOKENS=${AUTH_TOKENS}
+      - CORS_ALLOW_ORIGINS=${CORS_ALLOW_ORIGINS}
+      - DEEPSEEK_URL=${DEEPSEEK_URL}
+      - DEEPSEEK_API_KEY=${DEEPSEEK_API_KEY}
+    depends_on:
+      - qdrant
+      - elasticsearch
+      - vllm_small
+      - vllm_medium
+      - vllm_large
+    ports:
+      - "8000:8000"

@@ -1,0 +1,139 @@
+You are a senior build engineer. Create a production-ready GitHub repository named **https://github.com/dawsonblock/LIQUID_HIVE_25.git** that implements this end-to-end system:
+
+GOAL
+- Pipeline: LFM2 drafts → DeepSeek V3 critiques → LFM2 revises.
+- Routes: CODE | MATH | RAG | GENERAL | VISION (optional later).
+- RAG: Qdrant dense + Elasticsearch BM25, embeddings=e5-small, reranker=bge-reranker-base.
+- API: FastAPI with auth tokens, rate limits, metrics.
+- Runtime: Dockerfile (non-root), docker-compose (vLLM for LFM2 tiers, Qdrant, Elasticsearch, API).
+- CI: Lint, type-check, tests, safety. Fail-closed.
+
+REPO STRUCTURE
+- full_build/
+  - service/
+    - api.py            # FastAPI app: /healthz, /readyz, /ask
+    - bootstrap.py      # wires models, retriever, SelfLoop; reads env
+    - __init__.py
+  - router/
+    - main.py           # route to CODE/MATH/RAG/GENERAL (+VISION hook)
+    - __init__.py
+  - retrieval/
+    - qdrant_es.py      # Qdrant + ES hybrid retriever
+    - dual_index.py     # keep as fallback
+    - utils.py, crawler.py, __init__.py
+  - verifiers/
+    - code_verifier.py  # sandboxed exec with RLIMITs
+    - math_verifier.py  # SymPy equalities + random checks
+    - retrieval_verifier.py
+    - __init__.py
+  - ops_security/
+    - security.py       # Authenticator.verify(), RateLimiter.allow()
+    - observability.py  # Prom metrics counters/histograms
+    - __init__.py
+  - memory_cache/
+    - cache.py, conversation_graph.py, __init__.py
+  - evaluation/
+    - harness.py, metrics.py, __init__.py
+  - chat_client.py      # TieredChatClient + HttpModel (timeouts/retries/circuit)
+  - self_loop.py        # plan→draft(LFM2)→critique(DeepSeek)→revise(LFM2)
+  - config/retrieval_config.yaml
+  - requirements.txt
+  - Dockerfile
+  - README.md
+- hive_deploy/
+  - docker-compose.yml
+- .github/workflows/ci.yml
+- tests/ (unit tests for router, verifiers, retriever, self_loop; smoke test for /ask)
+
+KEY IMPLEMENTATIONS
+1) chat_client.py
+- HttpModel(base_url, api_key, timeout). POST to /v1/chat/completions or /v1/chat. Tenacity retries, exponential backoff. Record token usage in logs.
+- TieredChatClient(small, medium, large). Iterate tiers; circuit-breaker per tier.
+
+2) self_loop.py
+- __init__(chat_client, rag_search=None, critic_client=None).
+- self_loop(q, path, rounds=3, tau=0.7):
+  - Planner (bullets).
+  - Draft via run_path(path, draft_prompt) using LFM2 (chat_client).
+  - Verifiers:
+    - CODE: run code_verifier tests; enforce timeout and memory caps.
+    - MATH: symbolic and numeric checks.
+    - RAG/GENERAL: verify bracketed citations [1], provenance score from retrieval_verifier.
+  - Critique with critic_client (DeepSeek V3). If None, fallback to chat_client.
+  - Final revision with LFM2 using critique + verifier findings. Stop early if confidence ≥ τ; else one debate pass.
+
+3) service/api.py
+- FastAPI with CORS allowlist from env.
+- Authenticator.verify() against AUTH_TOKENS.
+- RateLimiter.allow(user, route, limit, window) with in-proc counter (pluggable to Redis later).
+- Endpoints: GET /healthz, GET /readyz, POST /ask {question, vision?, images?}.
+- Metrics via observability.record_request(route, latency), record_error(route, kind).
+
+4) service/bootstrap.py
+- Build TieredChatClient from env:
+  - SMALL_MODEL_URL, MEDIUM_MODEL_URL, LARGE_MODEL_URL (+ *_KEY).
+- Build DeepSeek critic HttpModel from env: DEEPSEEK_URL, DEEPSEEK_API_KEY.
+- Build retriever = QdrantESRetriever(QDRANT_URL, ES_URL).
+- Assemble SelfLoop(chat_client=tiers, critic_client=deepseek, rag_search=retriever.search).
+- create_app(auth, rate_limiter, allowed_origins, loop_handler).
+
+5) retrieval/qdrant_es.py
+- SentenceTransformer(“intfloat/e5-small”) for dense.
+- Qdrant REST for vectors; Elasticsearch BM25 for sparse.
+- search(q,k): dense(50) + sparse(50) → merge → rerank with cross-encoder “BAAI/bge-reranker-base” → top-k docs.
+
+6) verifiers/code_verifier.py
+- Extract python fences. Run with subprocess + RLIMIT_CPU=2s, RLIMIT_AS=256MB, FS cap, timeout=3s. No network.
+
+7) Dockerfile (non-root)
+- python:3.11-slim; adduser app; install deps; EXPOSE 8000; CMD uvicorn full_build.service.api:app.
+
+8) docker-compose.yml
+- qdrant, elasticsearch (single-node, no xpack auth), vLLM for:
+  - LiquidAI/LFM2-350M-Extract → http://vllm_small:8000
+  - LiquidAI/LFM2-1.2B-Tool → http://vllm_medium:8000
+  - LiquidAI/LFM2-2.6B → http://vllm_large:8000
+- api with env:
+  SMALL_MODEL_URL, MEDIUM_MODEL_URL, LARGE_MODEL_URL,
+  DEEPSEEK_URL, DEEPSEEK_API_KEY,
+  QDRANT_URL, ES_URL, AUTH_TOKENS, CORS_ALLOW_ORIGINS.
+
+9) CI (.github/workflows/ci.yml)
+- Steps: checkout → setup-python 3.11 → pip install -r requirements.txt + ruff+mypy+pytest+pytest-cov+safety.
+- ruff, mypy (ignore-missing-imports), safety check → pytest with coverage threshold. Fail on any error.
+
+10) README.md
+- Quickstart: docker compose up qdrant, elasticsearch, vllm_small/medium/large, then api.
+- Example curl:
+  curl -s -X POST http://localhost:8000/ask \
+   -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+   -d '{"question":"Compare CUDA streams vs graphs."}'
+
+ENV VARS
+- SMALL_MODEL_URL=http://vllm_small:8000
+- MEDIUM_MODEL_URL=http://vllm_medium:8000
+- LARGE_MODEL_URL=http://vllm_large:8000
+- DEEPSEEK_URL=https://api.deepseek.com
+- DEEPSEEK_API_KEY=***
+- QDRANT_URL=http://qdrant:6333
+- ES_URL=http://elasticsearch:9200
+- AUTH_TOKENS=CHANGE_ME_TOKEN
+- CORS_ALLOW_ORIGINS=https://your.domain
+
+DEPENDENCIES (requirements.txt)
+- fastapi, uvicorn, httpx, tenacity
+- sentence-transformers, transformers, torch
+- qdrant-client (or REST only), elasticsearch
+- sympy, pyflakes, pytest, pytest-cov, ruff, mypy, safety
+
+ACCEPTANCE CRITERIA
+- `docker compose up -d` brings up qdrant, elasticsearch, vllm_small/medium/large, api without errors.
+- `GET /healthz` returns {ok:true}. `POST /ask` returns a revised answer that reflects DeepSeek’s critique.
+- CODE path times out unsafe code and reports verifier output.
+- CI fails on lint/type/test/safety issues.
+- Non-root container; API enforces auth and rate limits; logs include latency metrics.
+
+DELIVERABLES
+- Commit full repo with all files.
+- Open a PR with CI passing badge.
+- Provide a short “OPERATIONS.md” with port list, SLOs, common failure modes, and how to rotate tokens.

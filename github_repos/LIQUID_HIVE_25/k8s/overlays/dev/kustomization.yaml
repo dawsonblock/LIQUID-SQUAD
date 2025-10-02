@@ -1,0 +1,33 @@
+
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: liquid-hive-dev
+
+bases:
+  - ../../base
+
+namePrefix: dev-
+
+patches:
+  - target:
+      kind: Deployment
+      name: liquid-hive-api
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      kind: Deployment
+      name: liquid-hive-frontend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+
+configMapGenerator:
+  - name: liquid-hive-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=DEBUG
+      - CORS_ALLOW_ORIGINS=http://localhost:3000
