@@ -1,12 +1,12 @@
-"""HTTP API service for the LLM self‑loop system.
+"""HTTP API service for the LLM self-loop system.
 
 This module defines a FastAPI application that wraps the core
-capabilities of the self‑loop system.  It provides endpoints for
+capabilities of the self-loop system.  It provides endpoints for
 health checking, readiness, metrics, and a simple `/ask` endpoint
-that proxies a question through the self‑loop.  Authentication and
+that proxies a question through the self-loop.  Authentication and
 rate limiting are enforced via the `ops_security` hooks.  Basic
 observability is provided by recording request durations and
-errors.  The actual self‑loop orchestration is injected via a
+errors.  The actual self-loop orchestration is injected via a
 callable to keep the API layer free of business logic.
 
 To run this service in production, use Uvicorn or another ASGI
@@ -15,106 +15,147 @@ server: `uvicorn full_build.service.api:app --host 0.0.0.0 --port 8000`.
 
 from __future__ import annotations
 
+import os
 import time
 from typing import Callable, Optional
 
-from fastapi import FastAPI, HTTPException, Body, Header
+from fastapi import FastAPI, HTTPException, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from prometheus_client import make_asgi_app
 
 from full_build.ops_security.security import Authenticator, RateLimiter
 from full_build.ops_security.observability import record_request, record_error
 
-# These callables will be provided by the application at startup.
-# The API layer does not import the self‑loop directly to avoid
-# circular dependencies during initialization.
+# Global handler and retriever checker to be injected at startup
 self_loop_handler: Optional[Callable[[str], str]] = None
+retriever_health_check: Optional[Callable[[], bool]] = None
 
 
 class AskRequest(BaseModel):
     """Pydantic model for the `/ask` endpoint request body."""
-
     question: str
 
 
-def create_app(
-    auth: Optional[Authenticator] = None,
-    rate_limiter: Optional[RateLimiter] = None,
-    allowed_origins: Optional[list[str]] = None,
-    loop_handler: Optional[Callable[[str], str]] = None,
-) -> FastAPI:
-    """Factory to create the FastAPI application.
+class AskResponse(BaseModel):
+    """Pydantic model for the `/ask` endpoint response."""
+    answer: str
+    citations: Optional[list[str]] = None
 
-    Parameters:
-        auth: Authenticator instance for token verification.
-        rate_limiter: RateLimiter instance to enforce per‑user quotas.
-        allowed_origins: List of allowed origins for CORS.  If None,
-            CORS is disabled.
-        loop_handler: Callable that takes a question string and
-            returns an answer string.  If None, the `/ask` endpoint
-            will raise an error.
+
+# Dependency for authentication
+async def verify_auth(authorization: str = Header(default="")) -> str:
+    """Verify Bearer token from Authorization header."""
+    auth_token = os.getenv("AUTH_TOKEN")
+    if not auth_token:
+        # No auth required if AUTH_TOKEN not set
+        return "anonymous"
+    
+    # Parse Bearer token
+    token = authorization
+    if token.startswith("Bearer "):
+        token = token[7:].strip()
+    
+    if token != auth_token:
+        raise HTTPException(status_code=401, detail="unauthorized")
+    
+    return token
+
+
+# Create FastAPI app
+app = FastAPI(title="LLM Hive API", version="1.0.0")
+
+# Configure CORS
+cors_origins = os.getenv("CORS_ORIGINS", "*")
+if cors_origins:
+    origins = [o.strip() for o in cors_origins.split(",")]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+        allow_credentials=True,
+    )
+
+# Mount Prometheus metrics endpoint
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
+
+# Rate limiter instance
+rate_limiter = RateLimiter()
+
+
+@app.get("/health")
+async def health() -> dict:
+    """Liveness probe endpoint."""
+    return {"ok": True}
+
+
+@app.get("/ready")
+async def ready() -> dict:
+    """Readiness probe endpoint.
+    
+    Checks downstream services only when retrieval is enabled.
     """
-    # Default to dummy instances to simplify testing if none provided
-    auth = auth or Authenticator(valid_tokens=set())
-    rate_limiter = rate_limiter or RateLimiter()
+    retrieval_mode = os.getenv("RETRIEVAL_MODE", "disabled")
+    
+    if retrieval_mode != "disabled":
+        # Check if retriever is healthy
+        if retriever_health_check is not None:
+            try:
+                is_ready = retriever_health_check()
+                if not is_ready:
+                    raise HTTPException(status_code=503, detail="retrieval services not ready")
+            except Exception as e:
+                raise HTTPException(status_code=503, detail=f"retrieval check failed: {str(e)}")
+    
+    return {"ready": True}
+
+
+@app.post("/ask")
+async def ask(
+    payload: AskRequest,
+    user_id: str = Depends(verify_auth),
+) -> AskResponse:
+    """Proxy a question through the self-loop and return its answer.
+
+    The Authorization header must contain a valid Bearer token if AUTH_TOKEN is set.
+    Rate limiting is enforced per user.
+    """
+    # Check rate limit
+    rate_limit_qps = int(os.getenv("RATE_LIMIT_QPS", "5"))
+    rate_limit_window = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+    
+    if not rate_limiter.allow(user_id, "/ask", limit=rate_limit_qps, window=rate_limit_window):
+        raise HTTPException(status_code=429, detail="rate_limit_exceeded")
+    
+    if self_loop_handler is None:
+        raise HTTPException(status_code=500, detail="handler_not_configured")
+    
+    start_time = time.time()
+    try:
+        # Call the self loop handler
+        result = await self_loop_handler(payload.question)
+        
+        # Extract citations if present (simple heuristic)
+        citations = None
+        # Could parse [N] style citations from result if needed
+        
+        return AskResponse(answer=result, citations=citations)
+    except Exception as exc:
+        record_error("/ask", "internal_error")
+        raise HTTPException(status_code=500, detail="internal_error") from exc
+    finally:
+        record_request("/ask", time.time() - start_time)
+
+
+def set_self_loop_handler(handler: Callable[[str], str]) -> None:
+    """Inject the self-loop handler at startup."""
     global self_loop_handler
-    self_loop_handler = loop_handler
-
-    app = FastAPI(title="LLM Hive API")
-    # Configure CORS
-    if allowed_origins:
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=allowed_origins,
-            allow_methods=["POST", "GET"],
-            allow_headers=["Authorization", "Content‑Type"],
-        )
-
-    @app.get("/healthz")
-    async def healthz() -> dict[str, bool]:
-        """Liveness probe endpoint."""
-        return {"ok": True}
-
-    @app.get("/readyz")
-    async def readyz() -> dict[str, bool]:
-        """Readiness probe endpoint.  Always returns ready."""
-        return {"ready": True}
-
-    @app.post("/ask")
-    async def ask(
-        payload: AskRequest = Body(...),
-        authorization: Optional[str] = Header(default=""),
-    ) -> dict[str, str]:
-        """Proxy a question through the self‑loop and return its answer.
-
-        The Authorization header must contain a valid token if the
-        authenticator requires one.  Rate limiting is enforced by
-        identifying the user via their token.  If the token is
-        absent, an empty string is used as the identity.
-        """
-        user_id = authorization or ""
-        if not auth.verify(user_id):
-            raise HTTPException(status_code=401, detail="unauthorized")
-        # Check rate limit per user and endpoint
-        if not rate_limiter.allow(user_id, "/ask", limit=5, window=60):
-            raise HTTPException(status_code=429, detail="rate limit exceeded")
-        if self_loop_handler is None:
-            raise HTTPException(status_code=500, detail="self loop handler not configured")
-        start_time = time.time()
-        try:
-            # call the self loop; this may be synchronous or asynchronous
-            result = self_loop_handler(payload.question)
-            return {"answer": result}
-        except Exception as exc:
-            record_error("/ask", str(exc))
-            raise HTTPException(status_code=500, detail="internal error") from exc
-        finally:
-            record_request("/ask", time.time() - start_time)
-
-    return app
+    self_loop_handler = handler
 
 
-# Create a default application instance for Uvicorn auto‑detection.  In
-# this context, self_loop_handler is unconfigured; it should be set
-# explicitly before handling requests.
-app = create_app()
+def set_retriever_health_check(checker: Callable[[], bool]) -> None:
+    """Inject the retriever health check at startup."""
+    global retriever_health_check
+    retriever_health_check = checker
