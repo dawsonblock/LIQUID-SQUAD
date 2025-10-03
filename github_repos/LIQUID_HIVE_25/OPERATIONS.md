@@ -1,4 +1,3 @@
-
 # 🔧 LIQUID HIVE 25 - Operations Manual
 
 This document provides comprehensive operational procedures for managing, monitoring, and maintaining the LIQUID HIVE 25 system in production environments.
@@ -6,15 +5,16 @@ This document provides comprehensive operational procedures for managing, monito
 ## 📋 Table of Contents
 
 1. [System Overview](#system-overview)
-2. [Deployment Procedures](#deployment-procedures)
-3. [Monitoring & Alerting](#monitoring--alerting)
-4. [Backup & Recovery](#backup--recovery)
-5. [Scaling & Performance](#scaling--performance)
-6. [Security Operations](#security-operations)
-7. [Troubleshooting](#troubleshooting)
-8. [Maintenance Procedures](#maintenance-procedures)
-9. [Disaster Recovery](#disaster-recovery)
-10. [CI/CD Pipeline](#cicd-pipeline)
+2. [Self-Loop Reasoning System](#self-loop-reasoning-system)
+3. [Deployment Procedures](#deployment-procedures)
+4. [Monitoring & Alerting](#monitoring--alerting)
+5. [Backup & Recovery](#backup--recovery)
+6. [Scaling & Performance](#scaling--performance)
+7. [Security Operations](#security-operations)
+8. [Troubleshooting](#troubleshooting)
+9. [Maintenance Procedures](#maintenance-procedures)
+10. [Disaster Recovery](#disaster-recovery)
+11. [CI/CD Pipeline](#cicd-pipeline)
 
 ## 🏗️ System Overview
 
@@ -50,6 +50,435 @@ This document provides comprehensive operational procedures for managing, monito
 - **GPU**: NVIDIA A100 40GB or RTX 4090
 - **Storage**: 1TB NVMe SSD + 2TB HDD for backups
 - **Network**: 10Gbps connection with redundancy
+
+## 🧠 Self-Loop Reasoning System
+
+### Architecture Overview
+
+The Self-Loop is the core reasoning engine that implements an iterative self-improvement process for query responses.
+
+```
+┌─────────────────────────────────────────┐
+│  1. PLAN                                │
+│  - Analyze user query                   │
+│  - Break down into sub-problems         │
+│  - Identify verification requirements   │
+│  - Select appropriate verifiers         │
+└──────────────┬──────────────────────────┘
+               ↓
+┌─────────────────────────────────────────┐
+│  2. DRAFT                               │
+│  - Route to ChatClient (tiered models)  │
+│  - Generate initial response            │
+│  - Execute code if needed               │
+│  - Retrieve additional context          │
+└──────────────┬──────────────────────────┘
+               ↓
+┌─────────────────────────────────────────┐
+│  3. CRITIC                              │
+│  - CodeVerifier: Syntax & execution     │
+│  - MathVerifier: Calculation accuracy   │
+│  - RetrievalVerifier: Factual grounding │
+│  - Calculate confidence score (τ)       │
+│  - Generate improvement feedback        │
+└──────────────┬──────────────────────────┘
+               ↓
+         [τ ≥ threshold?]
+          Yes ↓    ↓ No
+         DONE    ↓
+                 ↓
+┌─────────────────────────────────────────┐
+│  4. REVISE                              │
+│  - Incorporate critic feedback          │
+│  - Fix identified errors                │
+│  - Improve reasoning chain              │
+│  - Re-retrieve if context insufficient  │
+└──────────────┬──────────────────────────┘
+               ↓
+        [max_rounds reached?]
+          No → back to PLAN (Round n+1)
+          Yes → return best attempt
+```
+
+### Configuration Parameters
+
+```bash
+# .env configuration for Self-Loop
+SELF_LOOP_MAX_ROUNDS=5              # Maximum iteration rounds
+SELF_LOOP_CONFIDENCE_THRESHOLD=0.85  # Tau (τ) stopping threshold
+SELF_LOOP_TIMEOUT_SECONDS=300        # Total execution timeout
+SELF_LOOP_ENABLE_CODE_EXEC=true      # Allow code execution
+SELF_LOOP_ENABLE_RETRIEVAL=true      # Enable RAG during iterations
+SELF_LOOP_ENABLE_MATH_VERIFY=true    # Enable math verification
+```
+
+### Monitoring Self-Loop Performance
+
+#### Key Metrics to Track
+
+```bash
+# Prometheus metrics
+self_loop_rounds_total                    # Total rounds per query
+self_loop_confidence_score                # Final confidence (τ) achieved
+self_loop_duration_seconds                # Total execution time
+self_loop_verifier_failures_total         # Verifier failure count
+self_loop_early_stopping_total            # Queries that stopped early (good)
+self_loop_max_rounds_reached_total        # Queries hitting max rounds (review)
+```
+
+#### Grafana Dashboard Queries
+
+```promql
+# Average rounds per query
+avg(self_loop_rounds_total)
+
+# Success rate (τ ≥ threshold)
+sum(rate(self_loop_confidence_score{score>=0.85}[5m])) / 
+sum(rate(self_loop_confidence_score[5m]))
+
+# P95 latency
+histogram_quantile(0.95, rate(self_loop_duration_seconds_bucket[5m]))
+
+# Verifier performance
+rate(self_loop_verifier_failures_total[5m]) by (verifier_type)
+```
+
+#### Health Checks
+
+```bash
+# Check Self-Loop system status
+curl http://localhost:8000/api/v1/self-loop/health
+
+# Example response
+{
+  "status": "healthy",
+  "components": {
+    "plan": "operational",
+    "draft": "operational",
+    "critic": "operational",
+    "revise": "operational"
+  },
+  "verifiers": {
+    "code": "enabled",
+    "math": "enabled",
+    "retrieval": "enabled"
+  },
+  "stats": {
+    "avg_rounds": 2.3,
+    "avg_confidence": 0.89,
+    "avg_duration_ms": 1250
+  }
+}
+```
+
+### Operational Procedures
+
+#### Tuning Confidence Threshold (τ)
+
+```bash
+# Too many max rounds reached? Lower threshold
+# Current: 0.85, Try: 0.80
+sed -i 's/SELF_LOOP_CONFIDENCE_THRESHOLD=0.85/SELF_LOOP_CONFIDENCE_THRESHOLD=0.80/' .env
+docker-compose restart api
+
+# Monitor impact
+watch -n 5 'curl -s http://localhost:9090/api/v1/query?query=self_loop_max_rounds_reached_total'
+
+# Too many low-quality responses? Raise threshold
+sed -i 's/SELF_LOOP_CONFIDENCE_THRESHOLD=0.80/SELF_LOOP_CONFIDENCE_THRESHOLD=0.90/' .env
+docker-compose restart api
+```
+
+#### Adjusting Max Rounds
+
+```bash
+# High latency issues? Reduce max rounds
+sed -i 's/SELF_LOOP_MAX_ROUNDS=5/SELF_LOOP_MAX_ROUNDS=3/' .env
+docker-compose restart api
+
+# Complex queries failing? Increase max rounds
+sed -i 's/SELF_LOOP_MAX_ROUNDS=3/SELF_LOOP_MAX_ROUNDS=7/' .env
+docker-compose restart api
+
+# Monitor round distribution
+curl -s http://localhost:9090/api/v1/query?query='histogram_quantile(0.5, self_loop_rounds_total_bucket)'
+```
+
+#### Verifier Management
+
+```bash
+# Disable specific verifier if causing issues
+sed -i 's/SELF_LOOP_ENABLE_CODE_EXEC=true/SELF_LOOP_ENABLE_CODE_EXEC=false/' .env
+docker-compose restart api
+
+# Check verifier performance
+curl http://localhost:8000/api/v1/verifiers/stats
+
+# Example response
+{
+  "code_verifier": {
+    "total_checks": 1523,
+    "pass_rate": 0.87,
+    "avg_duration_ms": 450,
+    "last_error": null
+  },
+  "math_verifier": {
+    "total_checks": 892,
+    "pass_rate": 0.93,
+    "avg_duration_ms": 120,
+    "last_error": null
+  },
+  "retrieval_verifier": {
+    "total_checks": 2341,
+    "pass_rate": 0.91,
+    "avg_duration_ms": 230,
+    "last_error": null
+  }
+}
+```
+
+### Troubleshooting Self-Loop Issues
+
+#### High Latency in Self-Loop
+
+```bash
+# 1. Check average rounds
+curl -s http://localhost:9090/api/v1/query?query='avg(self_loop_rounds_total)'
+
+# If avg > 3, investigate why queries need multiple rounds
+docker-compose logs api | grep "self_loop.*round"
+
+# 2. Profile specific query types
+curl http://localhost:8000/api/v1/self-loop/profile?query_type=math
+
+# 3. Optimize verifier execution
+# Run verifiers in parallel (if not already)
+sed -i 's/SELF_LOOP_PARALLEL_VERIFY=false/SELF_LOOP_PARALLEL_VERIFY=true/' .env
+docker-compose restart api
+
+# 4. Check model tier selection
+# Ensure lighter models handle simple queries
+docker-compose logs api | grep "model_tier"
+```
+
+#### Low Confidence Scores
+
+```bash
+# 1. Check verifier failure patterns
+curl http://localhost:9090/api/v1/query?query='rate(self_loop_verifier_failures_total[1h]) by (verifier_type)'
+
+# 2. Analyze failed verifications
+docker-compose logs api | grep "verifier_failed" | tail -50
+
+# 3. Review retrieval quality
+curl http://localhost:8000/api/v1/retrieval/debug?query="example query"
+
+# 4. Check if models are appropriate for query complexity
+# Upgrade to higher tier if needed
+sed -i 's/DEFAULT_MODEL_TIER=1/DEFAULT_MODEL_TIER=2/' .env
+docker-compose restart api
+```
+
+#### Self-Loop Not Stopping (Max Rounds)
+
+```bash
+# 1. Identify problematic query patterns
+docker-compose logs api | grep "max_rounds_reached" | tail -20
+
+# 2. Check if verifiers are too strict
+curl http://localhost:8000/api/v1/verifiers/thresholds
+
+# 3. Adjust verifier sensitivity
+# Example: Relax math verifier tolerance
+sed -i 's/MATH_VERIFIER_TOLERANCE=0.01/MATH_VERIFIER_TOLERANCE=0.05/' .env
+docker-compose restart api
+
+# 4. Enable debug logging
+sed -i 's/LOG_LEVEL=INFO/LOG_LEVEL=DEBUG/' .env
+docker-compose restart api
+docker-compose logs -f api | grep "self_loop_iteration"
+```
+
+#### Code Execution Failures
+
+```bash
+# 1. Check sandbox status
+curl http://localhost:8000/api/v1/sandbox/health
+
+# 2. Review code execution logs
+docker-compose logs api | grep "code_execution" | tail -30
+
+# 3. Test code verifier directly
+curl -X POST http://localhost:8000/api/v1/test/code-verifier \
+  -H "Content-Type: application/json" \
+  -d '{"code": "print(2+2)"}'
+
+# 4. Check sandbox resource limits
+docker stats liquid_hive_sandbox
+
+# 5. Restart sandbox if needed
+docker-compose restart sandbox
+```
+
+### Performance Optimization
+
+#### Self-Loop Caching
+
+```bash
+# Enable result caching for similar queries
+sed -i 's/SELF_LOOP_CACHE_ENABLED=false/SELF_LOOP_CACHE_ENABLED=true/' .env
+sed -i 's/SELF_LOOP_CACHE_TTL=3600/SELF_LOOP_CACHE_TTL=7200/' .env
+docker-compose restart api
+
+# Monitor cache hit rate
+curl http://localhost:9090/api/v1/query?query='rate(self_loop_cache_hits_total[5m]) / rate(self_loop_cache_requests_total[5m])'
+
+# Clear cache if needed
+curl -X POST http://localhost:8000/api/v1/cache/clear?scope=self_loop
+```
+
+#### Model Tier Optimization
+
+```bash
+# Analyze tier utilization
+curl http://localhost:9090/api/v1/query?query='sum by (tier) (rate(model_requests_total[1h]))'
+
+# Adjust tier routing thresholds
+# config/model_router.yaml
+tier_selection:
+  tier1:  # Fast, simple queries
+    max_tokens: 512
+    complexity_threshold: 0.3
+  tier2:  # Medium complexity
+    max_tokens: 2048
+    complexity_threshold: 0.7
+  tier3:  # Complex reasoning
+    max_tokens: 8192
+    complexity_threshold: 1.0
+
+# Apply configuration
+docker-compose restart api
+```
+
+#### Parallel Verifier Execution
+
+```bash
+# Enable parallel verification
+sed -i 's/SELF_LOOP_PARALLEL_VERIFY=false/SELF_LOOP_PARALLEL_VERIFY=true/' .env
+sed -i 's/SELF_LOOP_VERIFIER_THREADS=1/SELF_LOOP_VERIFIER_THREADS=3/' .env
+docker-compose restart api
+
+# Monitor performance improvement
+# Before and after comparison
+curl http://localhost:9090/api/v1/query?query='histogram_quantile(0.95, rate(self_loop_duration_seconds_bucket[5m]))'
+```
+
+### Self-Loop Testing & Validation
+
+#### Integration Tests
+
+```bash
+# Run Self-Loop test suite
+docker-compose exec api pytest tests/self_loop/ -v
+
+# Test specific scenarios
+docker-compose exec api pytest tests/self_loop/test_math_reasoning.py -v
+docker-compose exec api pytest tests/self_loop/test_code_generation.py -v
+docker-compose exec api pytest tests/self_loop/test_retrieval_grounding.py -v
+```
+
+#### Load Testing Self-Loop
+
+```bash
+# Run load test with realistic queries
+locust -f tests/load/self_loop_locustfile.py \
+  --host http://localhost:8000 \
+  --users 50 \
+  --spawn-rate 5 \
+  --run-time 10m
+
+# Monitor during load test
+watch -n 2 'curl -s http://localhost:9090/api/v1/query?query=self_loop_duration_seconds'
+```
+
+#### A/B Testing Configuration Changes
+
+```bash
+# Deploy canary with new settings
+# 1. Create canary environment
+cp .env .env.canary
+sed -i 's/SELF_LOOP_MAX_ROUNDS=5/SELF_LOOP_MAX_ROUNDS=3/' .env.canary
+
+# 2. Deploy canary instance
+docker-compose -f docker-compose.canary.yml up -d
+
+# 3. Route 10% traffic to canary (nginx configuration)
+# 4. Compare metrics between stable and canary
+
+# Stable metrics
+curl 'http://localhost:9090/api/v1/query?query=avg(self_loop_duration_seconds{instance="stable"})'
+
+# Canary metrics
+curl 'http://localhost:9090/api/v1/query?query=avg(self_loop_duration_seconds{instance="canary"})'
+```
+
+### Advanced Debugging
+
+#### Enable Self-Loop Tracing
+
+```bash
+# Enable detailed trace logging
+sed -i 's/SELF_LOOP_TRACE_ENABLED=false/SELF_LOOP_TRACE_ENABLED=true/' .env
+docker-compose restart api
+
+# View trace logs
+docker-compose logs -f api | grep "TRACE"
+
+# Example trace output:
+# [TRACE] self_loop.plan: query_id=abc123, complexity=0.7, selected_tier=2
+# [TRACE] self_loop.draft: round=1, model=tier2, tokens=450, duration_ms=1200
+# [TRACE] self_loop.critic: round=1, code_verify=PASS, math_verify=PASS, retrieval_verify=FAIL, confidence=0.65
+# [TRACE] self_loop.revise: round=1, feedback="Need better retrieval context", action=re_retrieve
+# [TRACE] self_loop.draft: round=2, model=tier2, tokens=520, duration_ms=1100
+# [TRACE] self_loop.critic: round=2, code_verify=PASS, math_verify=PASS, retrieval_verify=PASS, confidence=0.92
+# [TRACE] self_loop.complete: rounds=2, final_confidence=0.92, total_duration_ms=2850
+```
+
+#### Query-Level Analysis
+
+```bash
+# Analyze specific query execution
+curl -X POST http://localhost:8000/api/v1/self-loop/analyze \
+  -H "Content-Type: application/json" \
+  -d '{
+    "query": "Calculate the derivative of x^2 + 3x + 2",
+    "trace": true,
+    "return_intermediate": true
+  }'
+
+# Response includes full execution trace
+{
+  "query_id": "abc123",
+  "rounds": [
+    {
+      "round": 1,
+      "plan": {...},
+      "draft": {...},
+      "critic": {...},
+      "revise": {...}
+    },
+    {
+      "round": 2,
+      "plan": {...},
+      "draft": {...},
+      "critic": {...}
+    }
+  ],
+  "final_answer": "2x + 3",
+  "confidence": 0.95,
+  "total_duration_ms": 1850
+}
+```
 
 ## 🚀 Deployment Procedures
 
