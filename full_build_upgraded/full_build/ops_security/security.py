@@ -12,7 +12,7 @@ from typing import Optional, Dict
 import time
 
 class Authenticator:
-    """Simple token‑based authenticator.
+    """Simple token-based authenticator.
 
     This authenticator maintains a whitelist of valid tokens.  The
     :meth:`verify` method returns True if the supplied token is in the
@@ -24,8 +24,37 @@ class Authenticator:
         self.valid_tokens: set[str] = valid_tokens or set()
 
     def verify(self, token: str) -> bool:
-        """Check whether the provided token is authorised."""
+        """Check whether the provided token is authorised.
+
+        Supports both raw token strings and Authorization header values
+        in the form "Bearer <token>".
+        """
+        if not token:
+            return False
+
+        # Support Bearer token format by extracting the inner token
+        if token.startswith("Bearer "):
+            token = token[7:].strip()
+
         return token in self.valid_tokens
+
+    @staticmethod
+    def parse_bearer_token(authorization: str) -> str:
+        """Extract token from Authorization header.
+
+        Parameters:
+            authorization: Authorization header value (e.g., "Bearer <token>")
+
+        Returns:
+            The extracted token, or empty string if invalid format
+        """
+        if not authorization:
+            return ""
+
+        if authorization.startswith("Bearer "):
+            return authorization[7:].strip()
+
+        return authorization.strip()
 
 class JWTAuthenticator(Authenticator):
     """JWT/OIDC based authenticator stub.

@@ -1,11 +1,10 @@
 FROM python:3.11-slim
 
-# Install required system packages (if any).  In a production build you
-# may need to install compilers or OS libraries for specific ML
-# frameworks.  We keep this minimal for portability.
+# Install required system packages including wget for healthcheck
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         build-essential \
+        wget \
         && rm -rf /var/lib/apt/lists/*
 
 # Create unprivileged user
@@ -23,8 +22,12 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Expose the default API port
 EXPOSE 8000
 
+# Add healthcheck
+HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
+    CMD wget -qO- http://localhost:8000/health || exit 1
+
 # Switch to non-root user
 USER app
 
-# Default command launches the bootstrap script via Uvicorn if no command provided
-CMD ["python", "-m", "full_build.service.bootstrap"]
+# Default command launches the API via Uvicorn
+CMD ["uvicorn", "full_build.service.api:app", "--host", "0.0.0.0", "--port", "8000"]
