@@ -44,7 +44,11 @@ Ops Security: Auth tokens, rate limiting, observability hooks
 
 Requirements: Docker, docker‑compose, Hugging Face token if you use gated models.
 
+
+git clone https://github.com/username/LIQUID-SQUAD.git
+
 git clone <this-repo>
+        main
 cd LIQUID_HIVE_25
 cp .env.example .env
 docker compose -f docker-compose.dev.yml up --build
