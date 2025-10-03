@@ -50,15 +50,14 @@ async def verify_auth(authorization: str = Header(default="")) -> str:
     if not auth_token:
         # No auth required if AUTH_TOKEN not set
         return "anonymous"
-    
-    # Parse Bearer token
-    token = authorization
-    if token.startswith("Bearer "):
-        token = token[7:].strip()
-    
-    if token != auth_token:
+
+    if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="unauthorized")
-    
+
+    token = authorization[7:].strip()
+    if not token or token != auth_token:
+        raise HTTPException(status_code=401, detail="unauthorized")
+
     return token
 
 
@@ -153,6 +152,7 @@ def set_self_loop_handler(handler: Callable[[str], str]) -> None:
     """Inject the self-loop handler at startup."""
     global self_loop_handler
     self_loop_handler = handler
+    rate_limiter.reset()
 
 
 def set_retriever_health_check(checker: Callable[[], bool]) -> None:

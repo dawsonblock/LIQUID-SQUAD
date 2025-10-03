@@ -110,6 +110,10 @@ class RateLimiter:
         user_routes[route].append(now)
         return True
 
+    def reset(self) -> None:
+        """Clear tracked request timestamps (useful for tests)."""
+        self.calls.clear()
+
 class RouteQuotaManager:
     """Deprecated alias for backward compatibility.
 
@@ -135,6 +139,12 @@ class RouteQuotaManager:
             return False
         user_routes[route].append(now)
         return True
+
+
+# Backwards compatibility alias: legacy code expects `QuotaManager`
+# to expose the behaviour now provided by `RouteQuotaManager`.
+QuotaManager = RouteQuotaManager
+
 
 def get_secret(key: str) -> Optional[str]:
     """Retrieve a secret from a secure store.
