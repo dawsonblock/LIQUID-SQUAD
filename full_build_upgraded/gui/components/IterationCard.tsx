@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ChevronDown, ChevronRight, ExternalLink, Clock, CheckCircle } from 'lucide-react';
+import { ChevronDown, ChevronRight, Clock, CheckCircle, RefreshCw } from 'lucide-react';
 import { SelfLoopIteration } from '@/lib/api';
 import { cn, formatTimestamp } from '@/lib/utils';
 
@@ -44,6 +44,9 @@ export default function IterationCard({ iteration, index }: IterationCardProps) 
               Step {index + 1}: {stepName}
             </h3>
             <div className="flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
+              <RefreshCw className="h-3 w-3" />
+              <span>Round {iteration.round}</span>
+              <span>•</span>
               <Clock className="h-3 w-3" />
               <span>{formatTimestamp(iteration.timestamp)}</span>
               {iteration.confidence && (

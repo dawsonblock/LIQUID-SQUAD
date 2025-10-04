@@ -2,7 +2,9 @@
 
 import pytest
 from fastapi.testclient import TestClient
+
 from full_build.service.api import app
+from full_build.self_loop import SelfLoopResult
 
 
 @pytest.fixture
@@ -18,14 +20,22 @@ def test_ask_without_auth_token_not_set(client, monkeypatch):
     # Mock the handler
     from full_build.service import api
     
-    async def mock_handler(question: str) -> str:
-        return "Mock answer"
+    async def mock_handler(question: str, progress_callback=None) -> SelfLoopResult:
+        return SelfLoopResult(
+            answer="Mock answer",
+            citations=[],
+            iterations=[],
+            model_tier="small",
+            retrieval_mode="disabled",
+            total_duration_ms=12,
+            rounds=1,
+        )
     
     api.set_self_loop_handler(mock_handler)
     
     response = client.post("/ask", json={"question": "test"})
-    # Should succeed when AUTH_TOKEN not set
-    assert response.status_code in [200, 500]  # 500 if handler not properly configured
+    assert response.status_code == 200
+    assert response.json()["answer"] == "Mock answer"
 
 
 def test_ask_with_invalid_token(client, monkeypatch):
@@ -48,8 +58,16 @@ def test_ask_with_valid_token(client, monkeypatch):
     # Mock the handler
     from full_build.service import api
     
-    async def mock_handler(question: str) -> str:
-        return "Mock answer"
+    async def mock_handler(question: str, progress_callback=None) -> SelfLoopResult:
+        return SelfLoopResult(
+            answer="Mock answer",
+            citations=[],
+            iterations=[],
+            model_tier="small",
+            retrieval_mode="disabled",
+            total_duration_ms=12,
+            rounds=1,
+        )
     
     api.set_self_loop_handler(mock_handler)
     

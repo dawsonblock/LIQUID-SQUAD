@@ -3,4 +3,16 @@
 
 // Used for __tests__/testing-library.js
 // Learn more: https://github.com/testing-library/jest-dom
+import React from 'react';
 import '@testing-library/jest-dom';
+
+jest.mock('react-markdown', () => {
+  return function ReactMarkdownMock({ children }) {
+    return <div data-testid="react-markdown">{children}</div>;
+  };
+});
+
+jest.mock('remark-gfm', () => () => ({}));
+jest.mock('remark-math', () => () => ({}));
+jest.mock('rehype-katex', () => () => ({}));
+jest.mock('rehype-prism-plus', () => () => ({}));

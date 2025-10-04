@@ -116,12 +116,13 @@ def make_app():
         verifiers=verifiers,
         retriever=retriever,
         max_rounds=settings.MAX_ROUNDS,
-        conf_threshold=settings.CONFIDENCE_THRESHOLD
+        conf_threshold=settings.CONFIDENCE_THRESHOLD,
+        retrieval_mode=settings.RETRIEVAL_MODE,
     )
-    
+
     # Create async handler
-    async def handler(question: str) -> str:
-        return await self_loop(question, deps)
+    async def handler(question: str, progress_callback=None):
+        return await self_loop(question, deps, progress_callback=progress_callback)
     
     # Inject handler into API
     set_self_loop_handler(handler)
@@ -136,6 +137,8 @@ def make_app():
             except Exception:
                 return False
         set_retriever_health_check(health_check)
+    else:
+        set_retriever_health_check(None)
     
     return app
 

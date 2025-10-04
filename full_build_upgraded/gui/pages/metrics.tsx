@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { toast } from 'react-hot-toast';
 import { RefreshCw, Activity, Clock, AlertTriangle, CheckCircle } from 'lucide-react';
@@ -14,6 +14,22 @@ interface MetricsSummary {
   errorRate: number;
 }
 
+interface ChartSeries {
+  label?: string;
+  data: number[];
+  borderColor?: string;
+  backgroundColor?: string | string[];
+  borderWidth?: number;
+  tension?: number;
+}
+
+interface MetricsChartData {
+  requests: { labels: string[]; datasets: ChartSeries[] };
+  latency: { labels: string[]; datasets: ChartSeries[] };
+  errors: { labels: string[]; datasets: ChartSeries[] };
+  modelTiers: { labels: string[]; datasets: ChartSeries[] };
+}
+
 export default function Metrics() {
   const [modelTier, setModelTier] = useState('auto');
   const [retrievalMode, setRetrievalMode] = useState('disabled');
@@ -26,7 +42,7 @@ export default function Metrics() {
     averageLatency: 0,
     errorRate: 0,
   });
-  const [chartData, setChartData] = useState({
+  const [chartData, setChartData] = useState<MetricsChartData>({
     requests: {
       labels: [],
       datasets: [],
@@ -45,24 +61,23 @@ export default function Metrics() {
     },
   });
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = useCallback(async () => {
     setIsLoading(true);
     try {
       const api = getAPI();
       const metricsText = await api.metrics();
       const metrics = parsePrometheusMetrics(metricsText);
-      
+
       // Process metrics and update state
       processMetrics(metrics);
       setLastUpdated(new Date());
-      
     } catch (error: any) {
       console.error('Error fetching metrics:', error);
       toast.error('Failed to fetch metrics');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   const processMetrics = (metrics: Record<string, any>) => {
     // Generate mock data for demonstration
@@ -151,11 +166,11 @@ export default function Metrics() {
 
   useEffect(() => {
     fetchMetrics();
-    
+
     // Auto-refresh every 10 seconds
     const interval = setInterval(fetchMetrics, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchMetrics]);
 
   const summaryCards = [
     {

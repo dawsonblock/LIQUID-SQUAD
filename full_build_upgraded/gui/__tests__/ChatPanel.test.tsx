@@ -1,17 +1,17 @@
-import { render, screen } from '@testing-library/react';
-import { toast } from 'react-hot-toast';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ChatPanel from '@/components/ChatPanel';
-import { AskRequest, AskResponse } from '@/lib/api';
+import { AskRequest, AskResponse, SelfLoopIteration } from '@/lib/api';
 
-// Mock react-hot-toast
+const mockSuccess = jest.fn();
+const mockError = jest.fn();
+
 jest.mock('react-hot-toast', () => ({
   toast: {
-    success: jest.fn(),
-    error: jest.fn(),
+    success: (msg: string) => mockSuccess(msg),
+    error: (msg: string) => mockError(msg),
   },
 }));
 
-// Mock next/router
 jest.mock('next/router', () => ({
   useRouter: () => ({
     pathname: '/',
@@ -20,7 +20,7 @@ jest.mock('next/router', () => ({
 }));
 
 describe('ChatPanel', () => {
-  const mockOnSubmit = jest.fn();
+  const mockOnSubmit = jest.fn<Promise<AskResponse>, [AskRequest, { onIteration: (iteration: SelfLoopIteration) => void }]>();
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -28,48 +28,69 @@ describe('ChatPanel', () => {
 
   it('renders welcome message when no messages', () => {
     render(<ChatPanel onSubmit={mockOnSubmit} isLoading={false} />);
-    
+
     expect(screen.getByText('Welcome to LIQUID-SQUAD')).toBeInTheDocument();
     expect(screen.getByText(/Ask me anything!/)).toBeInTheDocument();
   });
 
-  it('renders input form', () => {
-    render(<ChatPanel onSubmit={mockOnSubmit} isLoading={false} />);
-    
-    expect(screen.getByPlaceholderText('Ask me anything...')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /send/i })).toBeInTheDocument();
-  });
-
   it('disables send button when input is empty', () => {
     render(<ChatPanel onSubmit={mockOnSubmit} isLoading={false} />);
-    
+
     const sendButton = screen.getByRole('button', { name: /send/i });
     expect(sendButton).toBeDisabled();
   });
 
-  it('shows loading state when isLoading is true', () => {
-    render(<ChatPanel onSubmit={mockOnSubmit} isLoading={true} />);
-    
-    expect(screen.getByText('Processing your question...')).toBeInTheDocument();
+  it('shows loading spinner on send button when loading', () => {
+    const { container } = render(<ChatPanel onSubmit={mockOnSubmit} isLoading={true} />);
+
+    const sendButton = screen.getByRole('button', { name: /send/i });
+    expect(sendButton).toBeDisabled();
+    expect(container.querySelector('svg.animate-spin')).toBeInTheDocument();
   });
 
-  it('handles form submission', async () => {
-    const mockResponse: AskResponse = {
-      answer: 'Test answer',
-      citations: ['citation1', 'citation2'],
+  it('streams iterations and renders final answer', async () => {
+    const iteration: SelfLoopIteration = {
+      step: 'plan',
+      content: '- Outline the response',
+      timestamp: '2024-01-01T00:00:00Z',
+      confidence: 0.5,
+      round: 1,
     };
-    
-    mockOnSubmit.mockResolvedValue(mockResponse);
-    
-    render(<ChatPanel onSubmit={mockOnSubmit} isLoading={false} />);
-    
-    const input = screen.getByPlaceholderText('Ask me anything...');
-    const sendButton = screen.getByRole('button', { name: /send/i });
-    
-    // Type in the input
-    await screen.getByDisplayValue('');
-    
-    // Note: Full form submission testing would require more complex setup
-    // This is a basic structure for the test
+
+    const response: AskResponse = {
+      answer: 'Final answer',
+      citations: [],
+      iterations: [iteration],
+      model_tier: 'small',
+      retrieval_mode: 'disabled',
+      duration_ms: 1200,
+      rounds: 1,
+    };
+
+    mockOnSubmit.mockImplementation(async (_request, handlers) => {
+      handlers.onIteration(iteration);
+      return response;
+    });
+
+    const { container } = render(<ChatPanel onSubmit={mockOnSubmit} isLoading={false} />);
+
+    const textarea = screen.getByPlaceholderText('Ask me anything...');
+    fireEvent.change(textarea, { target: { value: 'Hello world' } });
+
+    const form = container.querySelector('form');
+    expect(form).not.toBeNull();
+    if (form) {
+      fireEvent.submit(form);
+    }
+
+    await waitFor(() => {
+      expect(mockOnSubmit).toHaveBeenCalledWith(
+        { question: 'Hello world' },
+        expect.objectContaining({ onIteration: expect.any(Function) })
+      );
+    });
+
+    await screen.findByText('Self-Loop Process');
+    await screen.findByText('Final answer');
   });
 });

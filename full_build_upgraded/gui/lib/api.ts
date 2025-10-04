@@ -8,9 +8,11 @@ export interface AskRequest {
 export interface AskResponse {
   answer: string;
   citations: string[];
-  iterations?: SelfLoopIteration[];
-  model_tier?: string;
-  retrieval_mode?: string;
+  iterations: SelfLoopIteration[];
+  model_tier?: string | null;
+  retrieval_mode: string;
+  duration_ms?: number | null;
+  rounds: number;
 }
 
 export interface SelfLoopIteration {
@@ -18,6 +20,7 @@ export interface SelfLoopIteration {
   content: string;
   confidence?: number;
   timestamp: string;
+  round: number;
 }
 
 export interface HealthResponse {
@@ -35,6 +38,11 @@ export interface ReadyResponse {
 export interface MetricsResponse {
   metrics: string; // Prometheus format
 }
+
+export type AskStreamEvent =
+  | { type: 'iteration'; data: SelfLoopIteration }
+  | { type: 'final'; data: AskResponse }
+  | { type: 'error'; detail: string };
 
 export interface TraceEntry {
   id: string;
@@ -56,10 +64,12 @@ export interface ApiConfig {
 class LiquidSquadAPI {
   private client: AxiosInstance;
   private authToken?: string;
+  private baseURL: string;
 
   constructor(config: ApiConfig) {
     this.authToken = config.authToken;
-    
+    this.baseURL = config.baseURL.replace(/\/$/, '');
+
     this.client = axios.create({
       baseURL: config.baseURL,
       timeout: config.timeout || 30000,
@@ -109,6 +119,119 @@ class LiquidSquadAPI {
   async ask(request: AskRequest): Promise<AskResponse> {
     const response: AxiosResponse<AskResponse> = await this.client.post('/ask', request);
     return response.data;
+  }
+
+  async askStream(
+    request: AskRequest,
+    options: { onIteration?: (iteration: SelfLoopIteration) => void; signal?: AbortSignal } = {}
+  ): Promise<AskResponse> {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (this.authToken) {
+      headers['Authorization'] = `Bearer ${this.authToken}`;
+    }
+
+    const response = await fetch(`${this.baseURL}/ask/stream`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(request),
+      signal: options.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Streaming request failed (${response.status}): ${errorText}`);
+    }
+
+    if (!response.body) {
+      throw new Error('Streaming is not supported by this browser.');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let finalResponse: AskResponse | null = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        buffer += decoder.decode();
+        break;
+      }
+      buffer += decoder.decode(value, { stream: true });
+
+      buffer = this.processEventBuffer(buffer, options.onIteration, (response) => {
+        finalResponse = response;
+      });
+    }
+
+    // Process any trailing events after the stream closes
+    if (buffer.trim().length > 0) {
+      buffer = this.processEventBuffer(buffer, options.onIteration, (response) => {
+        finalResponse = response;
+      }, true);
+    }
+
+    if (!finalResponse) {
+      throw new Error('Stream ended without a final response.');
+    }
+
+    return finalResponse;
+  }
+
+  private processEventBuffer(
+    buffer: string,
+    onIteration: ((iteration: SelfLoopIteration) => void) | undefined,
+    onFinal: (response: AskResponse) => void,
+    flush: boolean = false,
+  ): string {
+    let remaining = buffer;
+    let separatorIndex = remaining.indexOf('\n\n');
+
+    while (separatorIndex !== -1) {
+      const chunk = remaining.slice(0, separatorIndex).trim();
+      remaining = remaining.slice(separatorIndex + 2);
+      this.handleStreamChunk(chunk, onIteration, onFinal);
+      separatorIndex = remaining.indexOf('\n\n');
+    }
+
+    if (flush) {
+      const tail = remaining.trim();
+      if (tail.length > 0) {
+        this.handleStreamChunk(tail, onIteration, onFinal);
+      }
+      return '';
+    }
+
+    return remaining;
+  }
+
+  private handleStreamChunk(
+    chunk: string,
+    onIteration: ((iteration: SelfLoopIteration) => void) | undefined,
+    onFinal: (response: AskResponse) => void,
+  ): void {
+    if (!chunk.startsWith('data:')) {
+      return;
+    }
+    const payload = chunk.slice(5).trim();
+    if (!payload) {
+      return;
+    }
+    let event: AskStreamEvent;
+    try {
+      event = JSON.parse(payload) as AskStreamEvent;
+    } catch (error) {
+      throw new Error(`Malformed stream payload: ${payload}`);
+    }
+    if (event.type === 'iteration' && event.data) {
+      onIteration?.(event.data);
+    } else if (event.type === 'final' && event.data) {
+      onFinal(event.data);
+    } else if (event.type === 'error') {
+      throw new Error(event.detail || 'Streaming error');
+    }
   }
 
   async metrics(): Promise<string> {

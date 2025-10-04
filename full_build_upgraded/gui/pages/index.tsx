@@ -3,7 +3,7 @@ import Head from 'next/head';
 import { toast } from 'react-hot-toast';
 import Layout from '@/components/Layout';
 import ChatPanel from '@/components/ChatPanel';
-import { createAPI, getAPI, AskRequest, AskResponse } from '@/lib/api';
+import { createAPI, getAPI, AskRequest, AskResponse, SelfLoopIteration } from '@/lib/api';
 import { getStoredAuthToken } from '@/lib/utils';
 
 export default function Home() {
@@ -23,7 +23,10 @@ export default function Home() {
     });
   }, []);
 
-  const handleAskQuestion = async (request: AskRequest): Promise<AskResponse> => {
+  const handleAskQuestion = async (
+    request: AskRequest,
+    callbacks?: { onIteration?: (iteration: SelfLoopIteration) => void }
+  ): Promise<AskResponse> => {
     setIsLoading(true);
     
     try {
@@ -35,10 +38,18 @@ export default function Home() {
         api.setAuthToken(currentToken);
       }
       
-      const response = await api.ask(request);
-      
-      toast.success('Question answered successfully!');
-      return response;
+      try {
+        const response = await api.askStream(request, {
+          onIteration: callbacks?.onIteration,
+        });
+        toast.success('Question answered successfully!');
+        return response;
+      } catch (streamError) {
+        console.warn('Streaming failed, falling back to standard ask endpoint.', streamError);
+        const fallback = await api.ask(request);
+        toast.success('Question answered successfully!');
+        return fallback;
+      }
     } catch (error: any) {
       console.error('Error asking question:', error);
       

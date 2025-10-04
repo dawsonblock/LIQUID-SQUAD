@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import { toast } from 'react-hot-toast';
 import { 
@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import Layout from '@/components/Layout';
 import TraceTable from '@/components/TraceTable';
-import { getAPI, TraceEntry } from '@/lib/api';
+import { createAPI, getAPI, TraceEntry } from '@/lib/api';
 import { 
   getStoredSettings, 
   setStoredSettings, 
@@ -62,24 +62,28 @@ export default function Settings() {
     }));
   }, []);
 
-  useEffect(() => {
-    checkConnection();
-  }, [settings.apiUrl, settings.authToken]);
-
-  const checkConnection = async () => {
+  const checkConnection = useCallback(async (): Promise<'connected' | 'error'> => {
     setConnectionStatus('checking');
     try {
+      const baseURL = settings.apiUrl || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+      createAPI({
+        baseURL,
+        authToken: settings.authToken || undefined,
+      });
       const api = getAPI();
-      if (settings.authToken) {
-        api.setAuthToken(settings.authToken);
-      }
       await api.health();
       setConnectionStatus('connected');
+      return 'connected';
     } catch (error) {
       console.error('Connection check failed:', error);
       setConnectionStatus('error');
+      return 'error';
     }
-  };
+  }, [settings.apiUrl, settings.authToken]);
+
+  useEffect(() => {
+    checkConnection();
+  }, [checkConnection]);
 
   const handleSettingChange = (key: keyof Settings, value: any) => {
     setSettings(prev => ({ ...prev, [key]: value }));
@@ -104,8 +108,8 @@ export default function Settings() {
   };
 
   const handleTestConnection = async () => {
-    await checkConnection();
-    if (connectionStatus === 'connected') {
+    const status = await checkConnection();
+    if (status === 'connected') {
       toast.success('Connection successful!');
     } else {
       toast.error('Connection failed. Please check your settings.');
