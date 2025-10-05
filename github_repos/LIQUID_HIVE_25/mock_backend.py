@@ -52,8 +52,7 @@ def fibonacci(n):
     return fibonacci(n-1) + fibonacci(n-2)
 
 # Calculate fibonacci of 10
-result = fibonacci(10)
-print(f"Fibonacci(10) = {result}")
+print("Fibonacci(10) = 55")
 ```
 
 ## Key Features
