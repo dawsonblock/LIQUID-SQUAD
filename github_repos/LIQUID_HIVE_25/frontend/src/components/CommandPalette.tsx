@@ -55,32 +55,41 @@ export const CommandPalette: React.FC = () => {
     cmd.label.toLowerCase().includes(query.toLowerCase())
   );
 
+  const commandsRef = React.useRef<Command[]>(filteredCommands);
+  const selectedIndexRef = React.useRef<number>(selectedIndex);
+  const isOpenRef = React.useRef<boolean>(uiState.isCommandPaletteOpen);
+
+  useEffect(() => { commandsRef.current = filteredCommands; }, [filteredCommands]);
+  useEffect(() => { selectedIndexRef.current = selectedIndex; }, [selectedIndex]);
+  useEffect(() => { isOpenRef.current = uiState.isCommandPaletteOpen; }, [uiState.isCommandPaletteOpen]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         toggleCommandPalette();
+        return;
       }
-
-      if (!uiState.isCommandPaletteOpen) return;
+      if (!isOpenRef.current) return;
 
       if (e.key === 'Escape') {
         toggleCommandPalette();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setSelectedIndex((prev) => Math.min(prev + 1, filteredCommands.length - 1));
+        setSelectedIndex((prev) => Math.min(prev + 1, commandsRef.current.length - 1));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setSelectedIndex((prev) => Math.max(prev - 1, 0));
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        filteredCommands[selectedIndex]?.action();
+        const cmd = commandsRef.current[selectedIndexRef.current];
+        cmd?.action();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [uiState.isCommandPaletteOpen, filteredCommands, selectedIndex, toggleCommandPalette]);
+  }, [toggleCommandPalette]);
 
   useEffect(() => {
     setSelectedIndex(0);
