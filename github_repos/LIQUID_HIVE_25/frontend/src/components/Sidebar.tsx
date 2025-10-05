@@ -129,7 +129,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={(e) => {
                       e.stopPropagation();
                       if (confirm('Delete this conversation?')) {
+                        const isCurrent = currentConversationId === conv.id;
                         onDeleteConversation(conv.id);
+                        if (isCurrent) {
+                          const nextConv = conversations.find(c => c.id !== conv.id);
+                          onSelectConversation(nextConv?.id || null);
+                        }
                       }
                     }}
                     className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-600 dark:text-red-400 rounded-lg transition-all"
