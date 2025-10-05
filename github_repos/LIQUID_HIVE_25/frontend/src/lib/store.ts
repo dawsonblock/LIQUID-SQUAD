@@ -152,6 +152,18 @@ export const useChatStore = create<ChatStore>()(
             currentConversationId: nextCurrent,
           };
         });
+      deleteConversation: (conversationId) => {
+        set((state) => {
+          const remaining = state.conversations.filter((conv) => conv.id !== conversationId);
+          let nextCurrent: string | null = state.currentConversationId;
+          if (state.currentConversationId === conversationId) {
+            nextCurrent = remaining[0]?.id || null;
+          }
+          return {
+            conversations: remaining,
+            currentConversationId: nextCurrent,
+          };
+        });
         // Optionally, if none remain, create a fresh conversation
         const { conversations, currentConversationId, createConversation, setCurrentConversation } = get();
         if (!currentConversationId && conversations.length === 0) {
