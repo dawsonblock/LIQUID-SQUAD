@@ -42,7 +42,7 @@ services:
       - "8003:8000"
   api:
     build:
-      context: ../full_build
+      context: ../full_build_upgraded/full_build
     environment:
       - SMALL_MODEL_URL=http://vllm_small:8000
       - MEDIUM_MODEL_URL=http://vllm_medium:8000

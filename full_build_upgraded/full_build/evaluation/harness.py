@@ -6,13 +6,12 @@ domains (code, math, retrieval and general).  It reads a list of
 examples, invokes the self‑loop controller, and computes metrics.
 """
 from __future__ import annotations
-from typing import List, Dict, Callable, Tuple
-import asyncio
+from typing import List, Dict, Tuple
 import json
 
 from .metrics import exact_match, f1_score, citation_precision
 from self_loop import SelfLoop, ChatClient
-from router.main import route_prompt, cost_gate
+from router.main import route_prompt
 
 def load_dataset(path: str) -> List[Dict[str, str]]:
     """Load a JSONL file of test cases.

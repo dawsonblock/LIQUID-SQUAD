@@ -1,1 +1,2 @@
-from .main import route_prompt, cost_gate
+# Router module - imports are available when needed
+# Unused imports removed to avoid linting warnings

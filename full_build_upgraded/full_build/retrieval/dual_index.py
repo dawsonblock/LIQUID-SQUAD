@@ -26,8 +26,7 @@ for hit in hits:
 
 from __future__ import annotations
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple, Iterable, Dict, Any
-import math
+from typing import List, Optional, Iterable, Dict, Any
 
 import numpy as np
 # NOTE: We avoid relying on TF‑IDF for ranking.  Instead we implement
@@ -276,7 +275,7 @@ class DualIndexRetriever:
             Filesystem path where the index should be written.  The parent
             directory must already exist.  Raises on error.
         """
-        import pickle, os
+        import pickle
         state = {
             'docs': self.docs,
             'vectorizer': self.vectorizer,
