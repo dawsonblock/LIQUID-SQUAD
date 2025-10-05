@@ -92,22 +92,28 @@ export default function Sidebar({
       {/* Sidebar */}
       <div
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-80 bg-white dark:bg-gray-800 shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
+          'fixed inset-y-0 left-0 z-50 w-80 glass-effect shadow-2xl transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         <div className="flex flex-col h-full">
           {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex items-center space-x-2">
-              <Bot className="h-8 w-8 text-primary-600" />
-              <h1 className="text-xl font-bold text-gray-900 dark:text-white">
-                LIQUID-SQUAD
-              </h1>
+          <div className="flex items-center justify-between p-5 border-b border-gray-200/50 dark:border-gray-700/50 bg-gradient-to-r from-primary-500/5 to-accent-500/5">
+            <div className="flex items-center space-x-3">
+              <div className="relative">
+                <div className="absolute inset-0 bg-primary-500/20 rounded-full blur-md animate-pulse-slow"></div>
+                <Bot className="relative h-8 w-8 text-primary-600 dark:text-primary-400" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold gradient-text">
+                  LIQUID-SQUAD
+                </h1>
+                <p className="text-xs text-gray-500 dark:text-gray-400">AI Agent System</p>
+              </div>
             </div>
             <button
               onClick={onToggle}
-              className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700"
+              className="lg:hidden p-2 rounded-xl text-gray-400 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-gray-700 transition-all duration-200"
             >
               <X className="h-5 w-5" />
             </button>
@@ -134,11 +140,13 @@ export default function Sidebar({
           </nav>
 
           {/* Controls */}
-          <div className="px-4 py-6 border-t border-gray-200 dark:border-gray-700 space-y-6">
+          <div className="px-4 py-6 border-t border-gray-200/50 dark:border-gray-700/50 space-y-5 bg-gradient-to-b from-transparent to-primary-500/5">
             {/* Auth Token */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                <Shield className="inline h-4 w-4 mr-1" />
+            <div className="group">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2.5 flex items-center">
+                <div className="p-1.5 bg-primary-100 dark:bg-primary-900/30 rounded-lg mr-2">
+                  <Shield className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                </div>
                 Auth Token
               </label>
               <input
@@ -151,9 +159,11 @@ export default function Sidebar({
             </div>
 
             {/* Model Tier */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                <Bot className="inline h-4 w-4 mr-1" />
+            <div className="group">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2.5 flex items-center">
+                <div className="p-1.5 bg-accent-100 dark:bg-accent-900/30 rounded-lg mr-2">
+                  <Bot className="h-4 w-4 text-accent-600 dark:text-accent-400" />
+                </div>
                 Model Tier
               </label>
               <select
@@ -170,9 +180,11 @@ export default function Sidebar({
             </div>
 
             {/* Retrieval Mode */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                <Database className="inline h-4 w-4 mr-1" />
+            <div className="group">
+              <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2.5 flex items-center">
+                <div className="p-1.5 bg-primary-100 dark:bg-primary-900/30 rounded-lg mr-2">
+                  <Database className="h-4 w-4 text-primary-600 dark:text-primary-400" />
+                </div>
                 Retrieval Mode
               </label>
               <select
@@ -189,17 +201,18 @@ export default function Sidebar({
             </div>
 
             {/* Critic Toggle */}
-            <div>
-              <label className="flex items-center">
+            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-accent-50 to-primary-50 dark:from-accent-900/20 dark:to-primary-900/20 rounded-xl border border-accent-200/30 dark:border-accent-700/30">
+              <span className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                Enable Critic
+              </span>
+              <label className="relative inline-flex items-center cursor-pointer">
                 <input
                   type="checkbox"
                   checked={criticEnabled}
                   onChange={(e) => onCriticToggle(e.target.checked)}
-                  className="rounded border-gray-300 text-primary-600 shadow-sm focus:border-primary-500 focus:ring-primary-500"
+                  className="sr-only peer"
                 />
-                <span className="ml-2 text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Enable Critic
-                </span>
+                <div className="w-11 h-6 bg-gray-300 dark:bg-gray-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
               </label>
             </div>
 
@@ -207,14 +220,19 @@ export default function Sidebar({
             <div>
               <button
                 onClick={handleDarkModeToggle}
-                className="flex items-center w-full p-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="flex items-center justify-between w-full p-3 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gradient-to-r hover:from-primary-50 hover:to-accent-50 dark:hover:from-gray-700 dark:hover:to-gray-600 transition-all duration-200 group"
               >
-                {darkMode ? (
-                  <Sun className="h-4 w-4 mr-2" />
-                ) : (
-                  <Moon className="h-4 w-4 mr-2" />
-                )}
-                {darkMode ? 'Light Mode' : 'Dark Mode'}
+                <div className="flex items-center">
+                  {darkMode ? (
+                    <Sun className="h-5 w-5 mr-3 text-amber-500" />
+                  ) : (
+                    <Moon className="h-5 w-5 mr-3 text-indigo-500" />
+                  )}
+                  <span>{darkMode ? 'Light Mode' : 'Dark Mode'}</span>
+                </div>
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity">
+                  {darkMode ? '☀️' : '🌙'}
+                </div>
               </button>
             </div>
 
@@ -224,10 +242,13 @@ export default function Sidebar({
                 href="https://github.com/your-repo/liquid-squad"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center w-full p-2 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-md hover:bg-gray-100 dark:hover:bg-gray-700"
+                className="flex items-center justify-between w-full p-3 text-sm font-medium text-gray-700 dark:text-gray-300 rounded-xl hover:bg-gradient-to-r hover:from-primary-50 hover:to-accent-50 dark:hover:from-gray-700 dark:hover:to-gray-600 transition-all duration-200 group"
               >
-                <ExternalLink className="h-4 w-4 mr-2" />
-                Documentation
+                <div className="flex items-center">
+                  <ExternalLink className="h-5 w-5 mr-3 text-primary-600 dark:text-primary-400" />
+                  <span>Documentation</span>
+                </div>
+                <span className="opacity-0 group-hover:opacity-100 transition-opacity text-xs">→</span>
               </a>
             </div>
           </div>

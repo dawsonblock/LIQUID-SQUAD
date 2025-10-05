@@ -9,7 +9,6 @@ variables via the settings module.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 
 from full_build.config.settings import settings

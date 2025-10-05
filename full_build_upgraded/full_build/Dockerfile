@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 # Install required system packages including wget for healthcheck
 RUN apt-get update && \

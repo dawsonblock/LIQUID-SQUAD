@@ -52,11 +52,12 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
             components={{
-              code({ node, inline, className, children, ...props }) {
+              code({ className, children }) {
                 const match = /language-(\w+)/.exec(className || '');
                 const codeString = String(children).replace(/\n$/, '');
+                const isInline = !match; // Inline code doesn't have a language class
 
-                return !inline && match ? (
+                return !isInline && match ? (
                   <div className="relative group">
                     <button
                       onClick={() => handleCopy(codeString)}
@@ -70,16 +71,15 @@ export const ChatMessage: React.FC<ChatMessageProps> = ({ message }) => {
                       )}
                     </button>
                     <SyntaxHighlighter
-                      style={vscDarkPlus}
+                      style={vscDarkPlus as any}
                       language={match[1]}
                       PreTag="div"
-                      {...props}
                     >
                       {codeString}
                     </SyntaxHighlighter>
                   </div>
                 ) : (
-                  <code className={className} {...props}>
+                  <code className={className}>
                     {children}
                   </code>
                 );
