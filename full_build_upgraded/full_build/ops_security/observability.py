@@ -128,7 +128,8 @@ def record_selfloop_execution(
     """
     SELFLOOP_ITERATIONS.observe(iterations)
     SELFLOOP_CONFIDENCE.observe(confidence)
-    SELFLOOP_DURATION.observe(duration)
+    # convert seconds -> milliseconds to match histogram units
+    SELFLOOP_DURATION.observe(duration * 1000.0)
     MODEL_TIER_USAGE.labels(tier=model_tier).inc()
     logger.info(
         "Self-loop completed: %d iterations, %.2f%% confidence, %.3fs, tier=%s",
