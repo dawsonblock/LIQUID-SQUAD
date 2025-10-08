@@ -24,7 +24,18 @@ export default function Layout({
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-primary-50/30 dark:from-gray-900 dark:via-gray-900 dark:to-gray-800 overflow-hidden">
+    <div className="flex h-screen bg-gradient-to-br from-gray-50 via-gray-50 to-primary-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-gray-800 overflow-hidden relative">
+      {/* Animated Background Particles */}
+      <div className="particle-bg">
+        <div className="particle particle-1"></div>
+        <div className="particle particle-2"></div>
+        <div className="particle particle-3"></div>
+        <div className="particle particle-4"></div>
+      </div>
+
+      {/* Gradient Mesh Overlay */}
+      <div className="absolute inset-0 bg-gradient-mesh opacity-20 dark:opacity-10 pointer-events-none"></div>
+
       <Sidebar
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
@@ -37,17 +48,17 @@ export default function Layout({
       />
 
       {/* Main content */}
-      <div className="flex-1 flex flex-col overflow-hidden lg:ml-0">
-        {/* Mobile header */}
-        <div className="lg:hidden glass-effect shadow-lg border-b border-gray-200/50 dark:border-gray-700/50">
+      <div className="flex-1 flex flex-col overflow-hidden lg:ml-0 relative z-10">
+        {/* Mobile header with enhanced glass effect */}
+        <div className="lg:hidden glass-effect shadow-2xl border-b border-gray-200/50 dark:border-gray-700/50 backdrop-blur-3xl">
           <div className="flex items-center justify-between px-4 py-4">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="p-2 rounded-xl text-gray-500 hover:text-primary-600 hover:bg-primary-50 dark:hover:bg-gray-700 transition-all duration-200"
+              className="p-2 rounded-xl text-gray-500 hover:text-primary-600 hover:bg-primary-50/50 dark:hover:bg-gray-700/50 transition-all duration-300 hover-lift hover-glow"
             >
               <Menu className="h-6 w-6" />
             </button>
-            <h1 className="text-lg font-bold gradient-text">
+            <h1 className="text-lg font-bold text-shimmer animate-gradient-x">
               LIQUID-SQUAD
             </h1>
             <div className="w-10" /> {/* Spacer for centering */}

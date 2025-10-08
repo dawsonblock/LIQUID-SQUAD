@@ -4,6 +4,9 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Modern Enhancements */
+@import './modern-enhancements.css';
+
 /* Custom CSS for KaTeX and Prism */
 @import 'katex/dist/katex.min.css';
 
