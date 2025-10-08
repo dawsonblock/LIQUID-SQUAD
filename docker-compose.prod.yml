@@ -1,0 +1,291 @@
+version: '3.8'
+
+# Production Docker Compose Configuration
+# Optimized for performance, security, and reliability
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: liquid-hive-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-liquid_hive}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_INITDB_ARGS: "-E UTF8 --locale=en_US.UTF-8"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Qdrant Vector Database
+  qdrant:
+    image: qdrant/qdrant:v1.7.0
+    container_name: liquid-hive-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+      QDRANT__LOG_LEVEL: INFO
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:6333/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Elasticsearch
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: liquid-hive-elasticsearch
+    restart: unless-stopped
+    environment:
+      - discovery.type=single-node
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - xpack.security.enabled=false
+      - xpack.security.enrollment.enabled=false
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+
+  # Redis Cache
+  redis:
+    image: redis:7-alpine
+    container_name: liquid-hive-redis
+    restart: unless-stopped
+    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru --appendonly yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Backend API
+  api:
+    image: liquid-hive-api:latest
+    container_name: liquid-hive-api
+    restart: unless-stopped
+    build:
+      context: ./full_build_upgraded/full_build
+      dockerfile: Dockerfile.optimized
+      cache_from:
+        - liquid-hive-api:latest
+    ports:
+      - "8000:8000"
+    environment:
+      # Model URLs
+      - SMALL_MODEL_URL=${SMALL_MODEL_URL:-http://vllm_small:8000}
+      - MEDIUM_MODEL_URL=${MEDIUM_MODEL_URL:-http://vllm_medium:8000}
+      - LARGE_MODEL_URL=${LARGE_MODEL_URL:-http://vllm_large:8000}
+      
+      # Database URLs
+      - POSTGRES_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-liquid_hive}
+      - REDIS_URL=redis://redis:6379/0
+      - QDRANT_URL=http://qdrant:6333
+      - ES_URL=http://elasticsearch:9200
+      
+      # Configuration
+      - RETRIEVAL_MODE=${RETRIEVAL_MODE:-hybrid}
+      - AUTH_TOKEN=${AUTH_TOKEN}
+      - CORS_ORIGINS=${CORS_ORIGINS:-*}
+      
+      # Cache
+      - CACHE_MAX_SIZE=${CACHE_MAX_SIZE:-100}
+      - CACHE_TTL_SECONDS=${CACHE_TTL_SECONDS:-3600}
+      
+      # Logging
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_STRUCTURED=true
+      
+      # Performance
+      - WORKERS=${API_WORKERS:-4}
+      - MAX_REQUESTS=${MAX_REQUESTS:-1000}
+      - MAX_REQUESTS_JITTER=${MAX_REQUESTS_JITTER:-50}
+      
+      # Security
+      - RATE_LIMIT_QPS=${RATE_LIMIT_QPS:-10}
+      - RATE_LIMIT_WINDOW=${RATE_LIMIT_WINDOW:-60}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    networks:
+      - backend
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+        reservations:
+          memory: 2G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Frontend GUI
+  gui:
+    image: liquid-hive-gui:latest
+    container_name: liquid-hive-gui
+    restart: unless-stopped
+    build:
+      context: ./full_build_upgraded/gui
+      dockerfile: Dockerfile.optimized
+      cache_from:
+        - liquid-hive-gui:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+      - NODE_ENV=production
+    depends_on:
+      - api
+    networks:
+      - frontend
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 2G
+        reservations:
+          memory: 1G
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: liquid-hive-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.enable-lifecycle'
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
+
+  # Grafana Dashboards
+  grafana:
+    image: grafana/grafana:latest
+    container_name: liquid-hive-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SERVER_ROOT_URL=http://localhost:3001
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/datasources:/etc/grafana/provisioning/datasources:ro
+    depends_on:
+      - prometheus
+    networks:
+      - backend
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  qdrant_data:
+    driver: local
+  elasticsearch_data:
+    driver: local
+  redis_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local

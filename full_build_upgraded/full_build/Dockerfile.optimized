@@ -1,0 +1,75 @@
+# Multi-stage optimized Dockerfile for production builds
+# Stage 1: Builder - Install dependencies and compile
+FROM python:3.11-slim as builder
+
+# Install build dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        build-essential \
+        gcc \
+        g++ \
+        && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy only requirements first for better caching
+COPY requirements.txt .
+
+# Install dependencies to a specific directory
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# Stage 2: Runtime - Minimal image for production
+FROM python:3.11-slim
+
+# Install only runtime dependencies
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        wget \
+        curl \
+        ca-certificates \
+        && rm -rf /var/lib/apt/lists/*
+
+# Create unprivileged user
+RUN adduser --disabled-password --gecos "" --uid 1000 app
+
+WORKDIR /app
+
+# Copy installed dependencies from builder
+COPY --from=builder /install /usr/local
+
+# Copy application code
+COPY --chown=app:app . .
+
+# Create necessary directories
+RUN mkdir -p /app/logs /app/data && \
+    chown -R app:app /app
+
+# Expose port
+EXPOSE 8000
+
+# Enhanced healthcheck with better parameters
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
+    CMD wget -qO- http://localhost:8000/health || exit 1
+
+# Switch to non-root user
+USER app
+
+# Set Python environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONHASHSEED=random \
+    PIP_NO_CACHE_DIR=1 \
+    PIP_DISABLE_PIP_VERSION_CHECK=1
+
+# Use uvicorn with optimized settings for production
+CMD ["uvicorn", "full_build.service.api_enhanced:app", \
+     "--host", "0.0.0.0", \
+     "--port", "8000", \
+     "--workers", "4", \
+     "--loop", "uvloop", \
+     "--http", "httptools", \
+     "--log-level", "info", \
+     "--access-log", \
+     "--proxy-headers", \
+     "--forwarded-allow-ips", "*"]
