@@ -115,19 +115,25 @@ def record_error(path: str, error: str) -> None:
 def record_selfloop_execution(
     iterations: int,
     confidence: float,
-    duration_ms: int,
+    duration: float,
     model_tier: str
 ) -> None:
-    """Record metrics for a self-loop execution."""
+    """Record metrics for a self-loop execution.
+
+    Args:
+        iterations: Number of self-loop iterations.
+        confidence: Confidence score (0.0–1.0).
+        duration: Duration in seconds.
+        model_tier: Model tier identifier.
+    """
     SELFLOOP_ITERATIONS.observe(iterations)
     SELFLOOP_CONFIDENCE.observe(confidence)
-    SELFLOOP_DURATION.observe(duration_ms)
+    SELFLOOP_DURATION.observe(duration)
     MODEL_TIER_USAGE.labels(tier=model_tier).inc()
     logger.info(
-        "Self-loop completed: %d iterations, %.2f%% confidence, %dms, tier=%s",
-        iterations, confidence * 100, duration_ms, model_tier
+        "Self-loop completed: %d iterations, %.2f%% confidence, %.3fs, tier=%s",
+        iterations, confidence * 100, duration, model_tier
     )
-
 def record_model_inference(tier: str, duration: float) -> None:
     """Record metrics for a model inference call."""
     MODEL_TIER_USAGE.labels(tier=tier).inc()
