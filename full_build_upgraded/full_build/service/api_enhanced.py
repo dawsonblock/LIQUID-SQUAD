@@ -233,29 +233,102 @@ def _ensure_handler() -> ProgressHandler:
     return self_loop_handler
 
 
-record_selfloop_execution(
-    iterations=result.rounds,
-    confidence=final_confidence,
-    duration=(result.total_duration_ms or 0) / 1000.0,
-    model_tier=result.model_tier,
-)
+@app.post("/ask", response_model=AskResponse)
+async def ask(payload: AskRequest, user_id: str = Depends(verify_auth)) -> AskResponse:
+    """Main endpoint for asking questions with caching and conversation support."""
+    user_id_var.set(user_id)
+    handler = _ensure_handler()
 
-    # Handle conversation if conversation_id provided
-    conversation_id = payload.conversation_id
-    if conversation_id or user_id != "anonymous":
-        conv_manager = get_conversation_manager()
-        conversation = conv_manager.get_or_create_conversation(user_id, conversation_id)
-        conversation.add_turn(
-            question=sanitized_question,
-            answer=result.answer,
-            citations=result.citations,
-            model_tier=result.model_tier,
-            rounds=result.rounds,
-            duration_ms=result.total_duration_ms,
+    # Rate limiting
+    rate_limit_qps = int(os.getenv("RATE_LIMIT_QPS", "10"))
+    rate_limit_window = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
+    if not rate_limiter.allow(user_id, "/ask", limit=rate_limit_qps, window=rate_limit_window):
+        raise HTTPException(status_code=429, detail="rate_limit_exceeded")
+
+    # Input validation
+    validation_result = validate_ask_request(payload.question)
+    if not validation_result.is_valid:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "validation_error",
+                "reason": validation_result.reason,
+                "suggestions": validation_result.suggestions,
+            },
         )
-        conversation_id = conversation.conversation_id
 
-    return _serialize_result(result, from_cache=from_cache, conversation_id=conversation_id)
+    sanitized_question = validation_result.sanitized_input
+
+    # Check cache if enabled
+    from_cache = False
+    conversation_id: Optional[str] = payload.conversation_id
+    
+    if payload.use_cache:
+        cache = get_cache()
+        cached_result = cache.get(sanitized_question)
+        if cached_result:
+            record_cache_hit()
+            from_cache = True
+            # Handle conversation even for cached results
+            if conversation_id or user_id != "anonymous":
+                conv_manager = get_conversation_manager()
+                conversation = conv_manager.get_or_create_conversation(user_id, conversation_id)
+                conversation.add_turn(
+                    question=sanitized_question,
+                    answer=cached_result.answer,
+                    citations=cached_result.citations,
+                    model_tier=cached_result.model_tier,
+                    rounds=cached_result.rounds,
+                    duration_ms=cached_result.total_duration_ms,
+                )
+                conversation_id = conversation.conversation_id
+            return _serialize_result(cached_result, from_cache=True, conversation_id=conversation_id)
+        else:
+            record_cache_miss()
+
+    # Execute self-loop
+    start_time = time.time()
+    try:
+        result = await handler(sanitized_question, progress_callback=None)
+        
+        # Cache the result if caching is enabled
+        if payload.use_cache:
+            cache = get_cache()
+            cache.put(sanitized_question, result)
+            update_cache_size(cache.size())
+
+        # Record metrics
+        final_confidence = result.iterations[-1].confidence if result.iterations else 0.0
+        record_selfloop_execution(
+            iterations=result.rounds,
+            confidence=final_confidence,
+            duration=(result.total_duration_ms or 0) / 1000.0,
+            model_tier=result.model_tier,
+        )
+
+        # Handle conversation if conversation_id provided
+        if conversation_id or user_id != "anonymous":
+            conv_manager = get_conversation_manager()
+            conversation = conv_manager.get_or_create_conversation(user_id, conversation_id)
+            conversation.add_turn(
+                question=sanitized_question,
+                answer=result.answer,
+                citations=result.citations,
+                model_tier=result.model_tier,
+                rounds=result.rounds,
+                duration_ms=result.total_duration_ms,
+            )
+            conversation_id = conversation.conversation_id
+
+        return _serialize_result(result, from_cache=from_cache, conversation_id=conversation_id)
+    
+    except HTTPException:
+        raise
+    except Exception as exc:
+        record_error("/ask", "internal_error")
+        raise HTTPException(status_code=500, detail="internal_error") from exc
+    finally:
+        record_request("/ask", time.time() - start_time)
 
 
 @app.post("/ask/stream")
