@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { CheckCircle, XCircle, Info, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -27,6 +27,11 @@ export function Toast({ id, type, message, duration = 5000, onClose }: ToastProp
   const [isLeaving, setIsLeaving] = useState(false);
   const Icon = icons[type];
 
+  const handleClose = useCallback(() => {
+    setIsLeaving(true);
+    setTimeout(() => onClose(id), 300);
+  }, [id, onClose]);
+
   useEffect(() => {
     // Trigger animation
     requestAnimationFrame(() => setIsVisible(true));
@@ -37,12 +42,7 @@ export function Toast({ id, type, message, duration = 5000, onClose }: ToastProp
     }, duration);
 
     return () => clearTimeout(timer);
-  }, [duration]);
-
-  const handleClose = () => {
-    setIsLeaving(true);
-    setTimeout(() => onClose(id), 300);
-  };
+  }, [duration, handleClose]);
 
   return (
     <div
