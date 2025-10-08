@@ -233,95 +233,12 @@ def _ensure_handler() -> ProgressHandler:
     return self_loop_handler
 
 
-@app.post("/ask", response_model=AskResponse)
-async def ask(payload: AskRequest, user_id: str = Depends(verify_auth)) -> AskResponse:
-    """Enhanced ask endpoint with caching and validation."""
-    # Set user context for logging
-    user_id_var.set(user_id)
-    
-    handler = _ensure_handler()
-
-    # Rate limiting
-    rate_limit_qps = int(os.getenv("RATE_LIMIT_QPS", "5"))
-    rate_limit_window = int(os.getenv("RATE_LIMIT_WINDOW", "60"))
-    if not rate_limiter.allow(user_id, "/ask", limit=rate_limit_qps, window=rate_limit_window):
-        logger.warning(f"Rate limit exceeded for user {user_id}")
-        raise HTTPException(status_code=429, detail="rate_limit_exceeded")
-
-    # Input validation
-    validation_result = validate_ask_request(
-        payload.question,
-        max_rounds=payload.max_rounds,
-        conf_threshold=payload.conf_threshold,
-    )
-    if not validation_result.is_valid:
-        logger.warning(f"Invalid input: {validation_result.to_dict()}")
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "error": "validation_error",
-                "details": validation_result.to_dict(),
-            },
-        )
-
-    # Sanitize question
-    validator = QuestionValidator()
-    sanitized_question = validator.sanitize(payload.question)
-
-    # Check cache if enabled
-    cache = get_cache()
-    result = None
-    from_cache = False
-
-    if payload.use_cache:
-        retrieval_mode = os.getenv("RETRIEVAL_MODE", "disabled")
-        result = cache.get(
-            sanitized_question,
-            retrieval_mode=retrieval_mode,
-        )
-        if result:
-            record_cache_hit()
-            from_cache = True
-            logger.info(f"Cache hit for question: {sanitized_question[:50]}...")
-        else:
-            record_cache_miss()
-
-    # Execute self-loop if not cached
-    if result is None:
-        start_time = time.time()
-        try:
-            with LogTimer(logger, "self_loop_execution"):
-                result = await handler(sanitized_question, progress_callback=None)
-            
-            # Cache the result
-            if payload.use_cache:
-                retrieval_mode = os.getenv("RETRIEVAL_MODE", "disabled")
-                cache.put(sanitized_question, result, retrieval_mode=retrieval_mode)
-                update_cache_size(cache.stats()["size"])
-            
-            # Record metrics
-            final_confidence = 0.0
-            if result.iterations:
-                for it in reversed(result.iterations):
-                    if it.confidence is not None:
-                        final_confidence = it.confidence
-                        break
-            
-            record_selfloop_execution(
-                iterations=result.rounds,
-                confidence=final_confidence,
-                duration_ms=result.total_duration_ms,
-                model_tier=result.model_tier,
-            )
-
-        except HTTPException:
-            raise
-        except Exception as exc:
-            logger.error(f"Self-loop execution failed", exc_info=True)
-            record_error("/ask", "internal_error")
-            raise HTTPException(status_code=500, detail="internal_error") from exc
-        finally:
-            record_request("/ask", time.time() - start_time)
+record_selfloop_execution(
+    iterations=result.rounds,
+    confidence=final_confidence,
+    duration=(result.total_duration_ms or 0) / 1000.0,
+    model_tier=result.model_tier,
+)
 
     # Handle conversation if conversation_id provided
     conversation_id = payload.conversation_id
