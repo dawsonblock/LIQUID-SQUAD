@@ -248,8 +248,9 @@ async def _safe_verify_sync(verifier: Callable, draft: str, name: str, **kwargs)
 
 
 async def _safe_retrieve(retriever: Retriever, query: str, k: int) -> List[Any]:
-    """Safely retrieve documents."""
+    """Safely retrieve documents without blocking the event loop."""
     try:
-        return retriever.search(query, k)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, lambda: retriever.search(query, k))
     except Exception:
         return []
