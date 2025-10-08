@@ -13,11 +13,14 @@ const nextConfig = {
       },
     ];
   },
-  webpack: (config) => {
-    config.optimization = {
-      ...config.optimization,
-      minimize: true,
-    };
+  webpack: (config, { isServer, dev }) => {
+    if (!dev) {
+      // Ensure optimization object exists
+      config.optimization = config.optimization || {};
+      // Explicitly enable minimization for production builds if needed,
+      // though it's default. This is safer than replacing the object.
+      config.optimization.minimize = true;
+    }
     return config;
   },
 };
